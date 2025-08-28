@@ -7,6 +7,7 @@ import {
   idmux,
   Identity,
   scrapeRaw,
+  extract,
 } from "./lib";
 import crypto from "crypto";
 
@@ -1573,5 +1574,124 @@ describe("Scrape tests", () => {
       },
       scrapeTimeout,
     );
+  });
+
+  describe("Schema validation for additionalProperties", () => {
+    if (!process.env.TEST_SUITE_SELF_HOSTED || process.env.OPENAI_API_KEY || process.env.OLLAMA_BASE_URL) {
+      it("should reject scrape request with additionalProperties in extract schema", async () => {
+        const identity = await idmux({ name: "schema-validation-test" });
+        
+        const response = await scrapeRaw({
+          url: "https://example.com",
+          formats: ["extract"],
+          extract: {
+            schema: {
+              type: "object",
+              properties: {
+                title: { type: "string" }
+              },
+              additionalProperties: false
+            }
+          }
+        }, identity);
+
+        expect(response.statusCode).toBe(400);
+        expect(response.body.error).toContain("additionalProperties");
+        expect(response.body.error).toContain("OpenAI");
+      }, scrapeTimeout);
+
+      it("should reject extract request with additionalProperties in schema", async () => {
+        const identity = await idmux({ name: "schema-validation-test" });
+        
+        try {
+          const response = await extract({
+            urls: ["https://example.com"],
+            schema: {
+              type: "object",
+              properties: {
+                title: { type: "string" }
+              },
+              additionalProperties: true
+            }
+          }, identity);
+          
+          expect(response.success).toBe(false);
+          expect(response.error).toContain("additionalProperties");
+          expect(response.error).toContain("OpenAI");
+        } catch (error) {
+          expect(error.message).toContain("additionalProperties");
+          expect(error.message).toContain("OpenAI");
+        }
+      }, scrapeTimeout);
+
+      it("should reject scrape request with nested additionalProperties", async () => {
+        const identity = await idmux({ name: "schema-validation-test" });
+        
+        const response = await scrapeRaw({
+          url: "https://example.com",
+          formats: ["extract"],
+          extract: {
+            schema: {
+              type: "object",
+              properties: {
+                user: {
+                  type: "object",
+                  properties: {
+                    name: { type: "string" }
+                  },
+                  additionalProperties: false
+                }
+              }
+            }
+          }
+        }, identity);
+
+        expect(response.statusCode).toBe(400);
+        expect(response.body.error).toContain("additionalProperties");
+        expect(response.body.error).toContain("OpenAI");
+      }, scrapeTimeout);
+
+      it("should accept valid schema without additionalProperties", async () => {
+        const identity = await idmux({ name: "schema-validation-test" });
+        
+        const response = await scrapeRaw({
+          url: "https://example.com",
+          formats: ["extract"],
+          extract: {
+            schema: {
+              type: "object",
+              properties: {
+                title: { type: "string" }
+              },
+              required: ["title"]
+            }
+          }
+        }, identity);
+
+        expect(response.statusCode).toBe(200);
+      }, scrapeTimeout);
+
+      it("should reject changeTracking with additionalProperties in schema", async () => {
+        const identity = await idmux({ name: "schema-validation-test" });
+        
+        const response = await scrapeRaw({
+          url: "https://example.com",
+          formats: ["markdown", "changeTracking"],
+          changeTrackingOptions: {
+            schema: {
+              type: "object",
+              properties: {
+                changes: { type: "string" }
+              },
+              additionalProperties: true
+            }
+          }
+        }, identity);
+
+        expect(response.statusCode).toBe(400);
+        expect(response.body.error).toContain("additionalProperties");
+        expect(response.body.error).toContain("OpenAI");
+      }, scrapeTimeout);
+    }
   });
 });

@@ -84,8 +84,6 @@ function validateSchemaForOpenAI(schema: any): boolean {
 
 const OPENAI_SCHEMA_ERROR_MESSAGE = "Schema contains 'additionalProperties' which is not supported by OpenAI. Please remove this property from your schema.";
 
-const OPENAI_SCHEMA_ERROR_MESSAGE = "Schema contains 'additionalProperties' which is not supported by OpenAI. Please remove this property from your schema.";
-
 const ACTIONS_MAX_WAIT_TIME = 60;
 const MAX_ACTIONS = 50;
 function calculateTotalWaitTime(
