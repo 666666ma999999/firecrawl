@@ -340,7 +340,7 @@ export async function scrapeURLWithIndex(
   meta.logger.debug("Index metrics", {
     module: "index/metrics",
     hit: true,
-    age: new Date(selectedRow.created_at).getTime() - Date.now(),
+    age: Date.now() - new Date(selectedRow.created_at).getTime(),
     maxAge,
     dynamicMaxAge: meta.options.maxAge === undefined,
   });
