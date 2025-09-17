@@ -190,6 +190,9 @@ export function calculateCost(
     "gpt-4o-mini": { input_cost: 0.15, output_cost: 0.6 },
     "openai/gpt-4o-mini": { input_cost: 0.15, output_cost: 0.6 },
     "openai/gpt-4o": { input_cost: 2.5, output_cost: 10 },
+    "openai/gpt-5": { input_cost: 1.25, output_cost: 10 },
+    "openai/gpt-5-mini": { input_cost: 0.25, output_cost: 2 },
+    "openai/gpt-5-nano": { input_cost: 0.05, output_cost: 0.4 },
     "google/gemini-2.0-flash-001": { input_cost: 0.15, output_cost: 0.6 },
     "gemini-2.0-flash": { input_cost: 0.15, output_cost: 0.6 },
     "deepseek/deepseek-r1": { input_cost: 0.55, output_cost: 2.19 },
@@ -1070,8 +1073,8 @@ export async function performSummary(
       },
       markdown: document.markdown,
       previousWarning: document.warning,
-      model: getModel("gpt-4o-mini", "openai"),
-      retryModel: getModel("gpt-4o", "openai"),
+      model: getModel("gpt-5-mini", "openai"),
+      retryModel: getModel("gpt-4o-mini", "openai"),
       costTrackingOptions: {
         costTracking: meta.costTracking,
         metadata: {
