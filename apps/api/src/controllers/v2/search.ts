@@ -95,6 +95,7 @@ async function startScrapeJob(
       startTime: Date.now(),
       zeroDataRetention,
       apiKeyId: options.apiKeyId,
+      useRabbitMQ: true, // This job will be waited for
     },
     jobId,
     jobPriority,

@@ -7,6 +7,8 @@ export interface RabbitMQConfig {
   exchange: string;
   reconnectInterval?: number;
   prefetch?: number;
+  queueTTL?: number; // Message TTL in milliseconds
+  maxQueueLength?: number; // Max messages per queue
 }
 
 export interface JobNotification {
@@ -27,7 +29,9 @@ export class RabbitMQService {
   constructor(config: RabbitMQConfig) {
     this.config = {
       reconnectInterval: 5000,
-      prefetch: 10,
+      prefetch: 100, // Increased for production scale
+      queueTTL: 60000, // 1 minute default TTL
+      maxQueueLength: 10000, // 10k messages max per queue
       ...config,
     };
   }
@@ -141,7 +145,12 @@ export class RabbitMQService {
       );
 
       if (!published) {
-        throw new Error("Failed to publish message to RabbitMQ");
+        // Channel buffer is full - this is a backpressure warning
+        _logger.warn("RabbitMQ channel buffer full, message queued", {
+          module: "nuq/rabbitmq",
+          jobId,
+          status,
+        });
       }
 
       _logger.info("Published job notification to RabbitMQ", {
@@ -182,6 +191,11 @@ export class RabbitMQService {
       const q = await this.channel.assertQueue(consumerQueueName, {
         exclusive: true,
         autoDelete: true,
+        arguments: {
+          'x-message-ttl': this.config.queueTTL,
+          'x-max-length': this.config.maxQueueLength,
+          'x-overflow': 'drop-head', // Drop oldest messages when queue is full
+        },
       });
 
       await this.channel.bindQueue(

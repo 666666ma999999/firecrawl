@@ -67,6 +67,7 @@ export async function scrapeDocument_F0(
         startTime: Date.now(),
         zeroDataRetention: false, // not supported
         apiKeyId: options.apiKeyId,
+        useRabbitMQ: true, // This job will be waited for
       },
       jobId,
       jobPriority,

@@ -92,6 +92,7 @@ export async function scrapeController(
       startTime,
       zeroDataRetention,
       apiKeyId: req.acuc?.api_key_id ?? null,
+      useRabbitMQ: true, // This job will be waited for
     },
     jobId,
     jobPriority,

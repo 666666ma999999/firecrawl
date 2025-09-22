@@ -562,6 +562,13 @@ class NuQ<JobData = any, JobReturnValue = any> {
   ): Promise<boolean> {
     const start = Date.now();
     try {
+      // Get job data to check useRabbitMQ flag
+      const jobResult = await nuqPool.query(
+        `SELECT data FROM ${this.queueName} WHERE id = $1 AND lock = $2;`,
+        [id, lock],
+      );
+      const useRabbitMQ = jobResult.rows[0]?.data?.useRabbitMQ === true;
+
       const result = (
         (
           await nuqPool.query(
@@ -574,8 +581,8 @@ class NuQ<JobData = any, JobReturnValue = any> {
         ).rowCount !== 0
       );
 
-      // Publish to RabbitMQ if available
-      if (result && rabbitmqService) {
+      // Publish to RabbitMQ if available and flag is set
+      if (result && rabbitmqService && useRabbitMQ) {
         try {
           await rabbitmqService.publish(this.queueName, id, "completed", _logger);
         } catch (error) {
@@ -607,6 +614,13 @@ class NuQ<JobData = any, JobReturnValue = any> {
   ): Promise<boolean> {
     const start = Date.now();
     try {
+      // Get job data to check useRabbitMQ flag
+      const jobResult = await nuqPool.query(
+        `SELECT data FROM ${this.queueName} WHERE id = $1 AND lock = $2;`,
+        [id, lock],
+      );
+      const useRabbitMQ = jobResult.rows[0]?.data?.useRabbitMQ === true;
+
       const result = (
         (
           await nuqPool.query(
@@ -619,8 +633,8 @@ class NuQ<JobData = any, JobReturnValue = any> {
         ).rowCount !== 0
       );
 
-      // Publish to RabbitMQ if available
-      if (result && rabbitmqService) {
+      // Publish to RabbitMQ if available and flag is set
+      if (result && rabbitmqService && useRabbitMQ) {
         try {
           await rabbitmqService.publish(this.queueName, id, "failed", _logger);
         } catch (error) {

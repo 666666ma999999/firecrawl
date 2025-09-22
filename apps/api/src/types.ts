@@ -15,6 +15,7 @@ type ScrapeJobCommon = {
   concurrencyLimited?: boolean;
   team_id: string;
   zeroDataRetention: boolean;
+  useRabbitMQ?: boolean; // Whether to send RabbitMQ notifications for this job
 };
 
 export type ScrapeJobData = ScrapeJobCommon &
