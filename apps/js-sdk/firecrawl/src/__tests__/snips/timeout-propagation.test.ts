@@ -1,100 +1,140 @@
+import { describe, test, expect, jest } from '@jest/globals';
 import { FirecrawlAppV1, Firecrawl } from "../../index";
+import axios from 'axios';
 
-const testTimeoutPropagation = () => {
-  const testApiKey = "test-key";
-  const testUrl = "https://example.com";
+jest.mock('axios');
+const mockedAxios = axios as jest.Mocked<typeof axios>;
 
-  console.log("Testing timeout propagation in both v1 and v2 clients");
-  
-  const testV1Timeout = async () => {
-    const app = new FirecrawlAppV1({ apiKey: testApiKey });
-    const startTime = Date.now();
+describe('Timeout Propagation Tests', () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+    mockedAxios.post.mockRejectedValue(new Error('Timeout'));
+    mockedAxios.create.mockReturnValue(mockedAxios);
+  });
+
+  test('should calculate timeout correctly in v1 with waitFor and actions', async () => {
+    const app = new FirecrawlAppV1({ apiKey: "test-key" });
     
     try {
-      await app.scrapeUrl(testUrl, { timeout: 1000 });
-    } catch (error) {
-      const elapsed = Date.now() - startTime;
-      console.log(`V1 timeout test elapsed: ${elapsed}ms`);
-      return elapsed < 10000;
-    }
-    return false;
-  };
-  
-  const testV2Timeout = async () => {
-    const app = new Firecrawl({ apiKey: testApiKey });
-    const startTime = Date.now();
-    
-    try {
-      await app.scrape(testUrl, { timeout: 1000 });
-    } catch (error) {
-      const elapsed = Date.now() - startTime;
-      console.log(`V2 timeout test elapsed: ${elapsed}ms`);
-      return elapsed < 10000;
-    }
-    return false;
-  };
-  
-  const testWaitForTimeout = async () => {
-    const app = new FirecrawlAppV1({ apiKey: testApiKey });
-    const startTime = Date.now();
-    
-    try {
-      await app.scrapeUrl(testUrl, { 
-        timeout: 2000,
-        waitFor: 1000
-      });
-    } catch (error) {
-      const elapsed = Date.now() - startTime;
-      console.log(`WaitFor timeout test elapsed: ${elapsed}ms`);
-      return elapsed < 15000;
-    }
-    return false;
-  };
-  
-  const testActionTimeout = async () => {
-    const app = new FirecrawlAppV1({ apiKey: testApiKey });
-    const startTime = Date.now();
-    
-    try {
-      await app.scrapeUrl(testUrl, { 
-        timeout: 2000,
+      await app.scrapeUrl("https://example.com", { 
+        timeout: 1000,
+        waitFor: 2000,
         actions: [
-          { type: "wait", milliseconds: 1000 },
-          { type: "wait", selector: ".some-element" }
+          { type: "wait", milliseconds: 1500 },
+          { type: "wait", selector: ".element" },
+          { type: "click", selector: ".button" }
         ]
       });
     } catch (error) {
-      const elapsed = Date.now() - startTime;
-      console.log(`Action timeout test elapsed: ${elapsed}ms`);
-      return elapsed < 15000;
     }
-    return false;
-  };
-  
-  const testZeroTimeout = async () => {
-    const app = new FirecrawlAppV1({ apiKey: testApiKey });
-    const startTime = Date.now();
+
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Object),
+      expect.objectContaining({
+        timeout: 9500 // 1000 + 2000 + 1500 + 1000 + 5000 buffer
+      })
+    );
+  });
+
+  test('should calculate timeout correctly in v1 with timeout 0', async () => {
+    const app = new FirecrawlAppV1({ apiKey: "test-key" });
     
     try {
-      await app.scrapeUrl(testUrl, { timeout: 0 });
+      await app.scrapeUrl("https://example.com", { 
+        timeout: 0,
+        waitFor: 1000
+      });
     } catch (error) {
-      const elapsed = Date.now() - startTime;
-      console.log(`Zero timeout test elapsed: ${elapsed}ms`);
-      return elapsed < 10000;
     }
-    return false;
-  };
 
-  return Promise.all([
-    testV1Timeout(),
-    testV2Timeout(), 
-    testWaitForTimeout(),
-    testActionTimeout(),
-    testZeroTimeout()
-  ]).then(results => {
-    console.log("All timeout tests completed");
-    return results.every(result => result);
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Object),
+      expect.objectContaining({
+        timeout: 6000 // 0 + 1000 + 5000 buffer
+      })
+    );
   });
-};
 
-export { testTimeoutPropagation };
+  test('should handle undefined timeout in v1', async () => {
+    const app = new FirecrawlAppV1({ apiKey: "test-key" });
+    
+    try {
+      await app.scrapeUrl("https://example.com", {});
+    } catch (error) {
+    }
+
+    expect(mockedAxios.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Object),
+      expect.objectContaining({
+        timeout: undefined
+      })
+    );
+  });
+
+  test('should calculate timeout correctly in v2 HttpClient', async () => {
+    const app = new Firecrawl({ apiKey: "test-key" });
+    
+    const mockInstance = {
+      post: jest.fn().mockRejectedValue(new Error('Timeout')),
+      get: jest.fn(),
+      delete: jest.fn()
+    };
+    mockedAxios.create.mockReturnValue(mockInstance as any);
+    
+    try {
+      await app.scrape("https://example.com", { 
+        timeout: 2000,
+        waitFor: 1000,
+        actions: [
+          { type: "wait", milliseconds: 500 }
+        ]
+      });
+    } catch (error) {
+    }
+
+    expect(mockInstance.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Object),
+      expect.objectContaining({
+        timeout: 8500 // 2000 + 1000 + 500 + 5000 buffer
+      })
+    );
+  });
+
+  test('should calculate timeout correctly in v2 extract with scrapeOptions', async () => {
+    const app = new Firecrawl({ apiKey: "test-key" });
+    
+    const mockInstance = {
+      post: jest.fn().mockRejectedValue(new Error('Timeout')),
+      get: jest.fn(),
+      delete: jest.fn()
+    };
+    mockedAxios.create.mockReturnValue(mockInstance as any);
+    
+    try {
+      await app.extract({
+        urls: ["https://example.com"],
+        prompt: "Extract title",
+        scrapeOptions: { 
+          timeout: 1500,
+          waitFor: 500,
+          actions: [
+            { type: "wait", selector: ".loading" }
+          ]
+        }
+      });
+    } catch (error) {
+    }
+
+    expect(mockInstance.post).toHaveBeenCalledWith(
+      expect.any(String),
+      expect.any(Object),
+      expect.objectContaining({
+        timeout: 8000 // 1500 + 500 + 1000 + 5000 buffer
+      })
+    );
+  });
+});
