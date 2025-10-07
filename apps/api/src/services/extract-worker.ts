@@ -1,16 +1,12 @@
-import "dotenv/config";
+import { config } from "../config";
 import { shutdownOtel } from "../otel";
 import "./sentry";
 import * as Sentry from "@sentry/node";
-import {
-  getExtractQueue,
-  getRedisConnection,
-} from "./queue-service";
+import { getExtractQueue, getRedisConnection } from "./queue-service";
 import { Job, Queue, Worker } from "bullmq";
 import { logger as _logger } from "../lib/logger";
 import systemMonitor from "./system-monitor";
 import { v4 as uuidv4 } from "uuid";
-import { configDotenv } from "dotenv";
 import {
   ExtractResult,
   performExtraction,
@@ -21,23 +17,10 @@ import { createWebhookSender, WebhookEvent } from "./webhook";
 import Express from "express";
 import { robustFetch } from "../scraper/scrapeURL/lib/fetch";
 import { BullMQOtel } from "bullmq-otel";
-import { getErrorContactMessage } from "../lib/deployment";
+import { getErrorContactMessage, isSelfHosted } from "../lib/deployment";
 import { initializeBlocklist } from "../scraper/WebScraper/utils/blocklist";
 
-configDotenv();
-
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
-
-const jobLockExtendInterval =
-  Number(process.env.JOB_LOCK_EXTEND_INTERVAL) || 10000;
-const jobLockExtensionTime =
-  Number(process.env.JOB_LOCK_EXTENSION_TIME) || 60000;
-
-const cantAcceptConnectionInterval =
-  Number(process.env.CANT_ACCEPT_CONNECTION_INTERVAL) || 2000;
-const connectionMonitorInterval =
-  Number(process.env.CONNECTION_MONITOR_INTERVAL) || 10;
-const gotJobInterval = Number(process.env.CONNECTION_MONITOR_INTERVAL) || 20;
 
 const runningJobs: Set<string> = new Set();
 
@@ -55,8 +38,8 @@ const processExtractJobInternal = async (
 
   const extendLockInterval = setInterval(async () => {
     logger.info(`🔄 Worker extending lock on job ${job.id}`);
-    await job.extendLock(token, jobLockExtensionTime);
-  }, jobLockExtendInterval);
+    await job.extendLock(token, config.JOB_LOCK_EXTENSION_TIME);
+  }, config.JOB_LOCK_EXTEND_INTERVAL);
 
   const sender = await createWebhookSender({
     teamId: job.data.teamId,
@@ -222,12 +205,12 @@ const workerFun = async (
         });
       }
 
-      await sleep(cantAcceptConnectionInterval); // more sleep
+      await sleep(config.CANT_ACCEPT_CONNECTION_INTERVAL); // more sleep
       continue;
     } else if (!currentLiveness) {
       logger.info("Not accepting jobs because the liveness check failed");
 
-      await sleep(cantAcceptConnectionInterval);
+      await sleep(config.CANT_ACCEPT_CONNECTION_INTERVAL);
       continue;
     } else {
       cantAcceptConnectionCount = 0;
@@ -245,9 +228,9 @@ const workerFun = async (
         }
       });
 
-      await sleep(gotJobInterval);
+      await sleep(config.GOT_JOB_INTERVAL);
     } else {
-      await sleep(connectionMonitorInterval);
+      await sleep(config.CONNECTION_MONITOR_INTERVAL);
     }
   }
 };
@@ -259,7 +242,7 @@ let currentLiveness: boolean = true;
 
 app.get("/liveness", (req, res) => {
   _logger.info("Liveness endpoint hit");
-  if (process.env.USE_DB_AUTHENTICATION === "true") {
+  if (!isSelfHosted()) {
     // networking check for Kubernetes environments
     const host = process.env.FIRECRAWL_APP_HOST || "firecrawl-app-service";
     const port = process.env.FIRECRAWL_APP_PORT || "3002";
@@ -289,9 +272,10 @@ app.get("/liveness", (req, res) => {
   }
 });
 
-const workerPort = process.env.EXTRACT_WORKER_PORT || process.env.PORT || 3005;
-app.listen(workerPort, () => {
-  _logger.info(`Liveness endpoint is running on port ${workerPort}`);
+app.listen(config.EXTRACT_WORKER_PORT, () => {
+  _logger.info(
+    `Liveness endpoint is running on port ${config.EXTRACT_WORKER_PORT}`,
+  );
 });
 
 (async () => {
@@ -300,9 +284,7 @@ app.listen(workerPort, () => {
     process.exit(1);
   });
 
-  await Promise.all([
-    workerFun(getExtractQueue(), processExtractJobInternal),
-  ]);
+  await Promise.all([workerFun(getExtractQueue(), processExtractJobInternal)]);
 
   console.log("All workers exited. Waiting for all jobs to finish...");
 

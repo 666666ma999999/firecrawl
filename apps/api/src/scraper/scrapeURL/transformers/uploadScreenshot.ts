@@ -1,13 +1,14 @@
 // This file is an exception to the "no supabase in scrapeURL" rule,
 // and it makes me sad. - mogery
 
+import { isSelfHosted } from "../../../lib/deployment";
 import { supabase_service } from "../../../services/supabase";
 import { Meta } from "..";
 import { Document } from "../../../controllers/v1/types";
 
 export function uploadScreenshot(meta: Meta, document: Document): Document {
   if (
-    process.env.USE_DB_AUTHENTICATION === "true" &&
+    !isSelfHosted() &&
     document.screenshot !== undefined &&
     document.screenshot.startsWith("data:")
   ) {

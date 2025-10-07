@@ -1,4 +1,5 @@
 import express from "express";
+import { config } from "../config";
 import { redisHealthController } from "../controllers/v0/admin/redis-health";
 import { wrap } from "./shared";
 import { acucCacheClearController } from "../controllers/v0/admin/acuc-cache-clear";
@@ -14,47 +15,24 @@ import {
 
 export const adminRouter = express.Router();
 
-adminRouter.get(
-  `/admin/${process.env.BULL_AUTH_KEY}/redis-health`,
-  redisHealthController,
-);
+const authKey = config.BULL_AUTH_KEY;
+
+adminRouter.get(`/admin/${authKey}/redis-health`, redisHealthController);
 
 adminRouter.post(
-  `/admin/${process.env.BULL_AUTH_KEY}/acuc-cache-clear`,
+  `/admin/${authKey}/acuc-cache-clear`,
   wrap(acucCacheClearController),
 );
 
-adminRouter.get(
-  `/admin/${process.env.BULL_AUTH_KEY}/feng-check`,
-  wrap(checkFireEngine),
-);
+adminRouter.get(`/admin/${authKey}/feng-check`, wrap(checkFireEngine));
+adminRouter.get(`/admin/${authKey}/cclog`, wrap(cclogController));
+adminRouter.get(`/admin/${authKey}/zdrcleaner`, wrap(zdrcleanerController));
 
 adminRouter.get(
-  `/admin/${process.env.BULL_AUTH_KEY}/cclog`,
-  wrap(cclogController),
-);
-
-adminRouter.get(
-  `/admin/${process.env.BULL_AUTH_KEY}/zdrcleaner`,
-  wrap(zdrcleanerController),
-);
-
-adminRouter.get(
-  `/admin/${process.env.BULL_AUTH_KEY}/index-queue-prometheus`,
+  `/admin/${authKey}/index-queue-prometheus`,
   wrap(indexQueuePrometheus),
 );
 
-adminRouter.get(
-  `/admin/${process.env.BULL_AUTH_KEY}/precrawl`,
-  wrap(triggerPrecrawl),
-);
-
-adminRouter.get(
-  `/admin/${process.env.BULL_AUTH_KEY}/metrics`,
-  wrap(metricsController),
-);
-
-adminRouter.get(
-  `/admin/${process.env.BULL_AUTH_KEY}/nuq-metrics`,
-  wrap(nuqMetricsController),
-);
+adminRouter.get(`/admin/${authKey}/precrawl`, wrap(triggerPrecrawl));
+adminRouter.get(`/admin/${authKey}/metrics`, wrap(metricsController));
+adminRouter.get(`/admin/${authKey}/nuq-metrics`, wrap(nuqMetricsController));

@@ -1,4 +1,4 @@
-import "dotenv/config";
+import { config } from "../config";
 import { shutdownOtel } from "../otel";
 import "./sentry";
 import * as Sentry from "@sentry/node";
@@ -11,7 +11,6 @@ import { Job, Queue, Worker } from "bullmq";
 import { logger as _logger } from "../lib/logger";
 import systemMonitor from "./system-monitor";
 import { v4 as uuidv4 } from "uuid";
-import { configDotenv } from "dotenv";
 import { updateDeepResearch } from "../lib/deep-research/deep-research-redis";
 import { performDeepResearch } from "../lib/deep-research/deep-research-service";
 import { performGenerateLlmsTxt } from "../lib/generate-llmstxt/generate-llmstxt-service";
@@ -20,21 +19,16 @@ import Express from "express";
 import { robustFetch } from "../scraper/scrapeURL/lib/fetch";
 import { BullMQOtel } from "bullmq-otel";
 import { initializeBlocklist } from "../scraper/WebScraper/utils/blocklist";
-
-configDotenv();
+import { isSelfHosted } from "../lib/deployment";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-const jobLockExtendInterval =
-  Number(process.env.JOB_LOCK_EXTEND_INTERVAL) || 10000;
-const jobLockExtensionTime =
-  Number(process.env.JOB_LOCK_EXTENSION_TIME) || 60000;
+const jobLockExtendInterval = config.JOB_LOCK_EXTEND_INTERVAL;
+const jobLockExtensionTime = config.JOB_LOCK_EXTENSION_TIME;
 
-const cantAcceptConnectionInterval =
-  Number(process.env.CANT_ACCEPT_CONNECTION_INTERVAL) || 2000;
-const connectionMonitorInterval =
-  Number(process.env.CONNECTION_MONITOR_INTERVAL) || 10;
-const gotJobInterval = Number(process.env.CONNECTION_MONITOR_INTERVAL) || 20;
+const cantAcceptConnectionInterval = config.CANT_ACCEPT_CONNECTION_INTERVAL;
+const connectionMonitorInterval = config.CONNECTION_MONITOR_INTERVAL;
+const gotJobInterval = config.GOT_JOB_INTERVAL;
 
 const runningJobs: Set<string> = new Set();
 
@@ -282,7 +276,7 @@ let currentLiveness: boolean = true;
 
 app.get("/liveness", (req, res) => {
   _logger.info("Liveness endpoint hit");
-  if (process.env.USE_DB_AUTHENTICATION === "true") {
+  if (!isSelfHosted()) {
     // networking check for Kubernetes environments
     const host = process.env.FIRECRAWL_APP_HOST || "firecrawl-app-service";
     const port = process.env.FIRECRAWL_APP_PORT || "3002";
@@ -312,9 +306,8 @@ app.get("/liveness", (req, res) => {
   }
 });
 
-const workerPort = process.env.WORKER_PORT || process.env.PORT || 3005;
-app.listen(workerPort, () => {
-  _logger.info(`Liveness endpoint is running on port ${workerPort}`);
+app.listen(config.WORKER_PORT, () => {
+  _logger.info(`Liveness endpoint is running on port ${config.WORKER_PORT}`);
 });
 
 (async () => {

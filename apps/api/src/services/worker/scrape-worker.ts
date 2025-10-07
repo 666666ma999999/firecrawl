@@ -71,6 +71,7 @@ import {
   withSpan,
   setSpanAttributes,
 } from "../../lib/otel-tracer";
+import { isSelfHosted } from "../../lib/deployment";
 
 const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
@@ -104,7 +105,7 @@ async function billScrapeJob(
 
     if (
       job.data.team_id !== process.env.BACKGROUND_INDEX_TEAM_ID! &&
-      process.env.USE_DB_AUTHENTICATION === "true"
+      !isSelfHosted()
     ) {
       try {
         const billingJobId = uuidv4();

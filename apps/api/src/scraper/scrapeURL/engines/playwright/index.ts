@@ -3,12 +3,19 @@ import { EngineScrapeResult } from "..";
 import { Meta } from "../..";
 import { robustFetch } from "../../lib/fetch";
 import { getInnerJson } from "@mendable/firecrawl-rs";
+import { config } from "../../../../config";
 
 export async function scrapeURLWithPlaywright(
   meta: Meta,
 ): Promise<EngineScrapeResult> {
+  if (!config.PLAYWRIGHT_MICROSERVICE_URL) {
+    throw new Error(
+      "Playwright microservice is not configured. Please set PLAYWRIGHT_MICROSERVICE_URL environment variable to use Playwright.",
+    );
+  }
+
   const response = await robustFetch({
-    url: process.env.PLAYWRIGHT_MICROSERVICE_URL!,
+    url: config.PLAYWRIGHT_MICROSERVICE_URL,
     headers: {
       "Content-Type": "application/json",
     },

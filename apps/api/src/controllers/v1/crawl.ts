@@ -12,6 +12,7 @@ import { _addScrapeJobToBullMQ } from "../../services/queue-jobs";
 import { logger as _logger } from "../../lib/logger";
 import { fromV1ScrapeOptions } from "../v2/types";
 import { checkPermissions } from "../../lib/permissions";
+import { isSelfHosted } from "../../lib/deployment";
 
 export async function crawlController(
   req: RequestWithAuth<{}, CrawlResponse, CrawlRequest>,
@@ -47,8 +48,7 @@ export async function crawlController(
   });
 
   let { remainingCredits } = req.account!;
-  const useDbAuthentication = process.env.USE_DB_AUTHENTICATION === "true";
-  if (!useDbAuthentication) {
+  if (isSelfHosted()) {
     remainingCredits = Infinity;
   }
 

@@ -1,5 +1,7 @@
+import { config } from "../config";
+
 export function isSelfHosted(): boolean {
-  return process.env.USE_DB_AUTHENTICATION !== "true";
+  return config.USE_DB_AUTHENTICATION !== true;
 }
 
 export function getErrorContactMessage(errorId?: string): string {

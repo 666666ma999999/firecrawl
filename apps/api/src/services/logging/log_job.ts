@@ -1,9 +1,8 @@
+import { config } from "../../config";
 import { supabase_service } from "../supabase";
 import { FirecrawlJob } from "../../types";
 import { posthog } from "../posthog";
-import "dotenv/config";
 import { logger as _logger } from "../../lib/logger";
-import { configDotenv } from "dotenv";
 import { saveJobToGCS } from "../../lib/gcs-jobs";
 import { saveJobToBigQuery } from "../../lib/bigquery-jobs";
 import {
@@ -11,7 +10,7 @@ import {
   createJobLoggerContext,
 } from "../../lib/job-transform";
 import { withSpan, setSpanAttributes } from "../../lib/otel-tracer";
-configDotenv();
+import { isSelfHosted } from "../../lib/deployment";
 
 export async function logJob(
   job: FirecrawlJob,
@@ -58,8 +57,7 @@ export async function logJob(
       });
     }
 
-    const useDbAuthentication = process.env.USE_DB_AUTHENTICATION === "true";
-    if (!useDbAuthentication) {
+    if (isSelfHosted()) {
       return;
     }
 
@@ -158,7 +156,7 @@ export async function logJob(
       });
     }
 
-    if (process.env.POSTHOG_API_KEY && !job.crawl_id) {
+    if (config.POSTHOG_API_KEY && !job.crawl_id) {
       await withSpan("firecrawl-log-job-posthog-capture", async span => {
         setSpanAttributes(span, {
           "log_job.operation": "posthog_capture",

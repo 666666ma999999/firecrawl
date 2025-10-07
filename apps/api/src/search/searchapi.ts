@@ -1,8 +1,6 @@
 import axios from "axios";
-import dotenv from "dotenv";
 import { SearchResult } from "../../src/lib/entities";
-
-dotenv.config();
+import { config } from "../config";
 
 interface SearchOptions {
   tbs?: string;
@@ -25,7 +23,7 @@ export async function searchapi_search(
     location: options.location,
     num: options.num_results,
     page: options.page ?? 1,
-    engine: process.env.SEARCHAPI_ENGINE || "google",
+    engine: config.SEARCHAPI_ENGINE,
   };
 
   const url = `https://www.searchapi.io/api/v1/search`;
@@ -33,7 +31,7 @@ export async function searchapi_search(
   try {
     const response = await axios.get(url, {
       headers: {
-        Authorization: `Bearer ${process.env.SEARCHAPI_API_KEY}`,
+        Authorization: `Bearer ${config.SEARCHAPI_API_KEY}`,
         "Content-Type": "application/json",
         "X-SearchApi-Source": "Firecrawl",
       },

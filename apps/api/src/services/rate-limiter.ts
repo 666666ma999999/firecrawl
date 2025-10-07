@@ -2,12 +2,11 @@ import { RateLimiterRedis } from "rate-limiter-flexible";
 import { RateLimiterMode } from "../types";
 import Redis from "ioredis";
 import type { AuthCreditUsageChunk } from "../controllers/v1/types";
+import { config } from "../config";
 
-export const redisRateLimitClient = new Redis(
-  process.env.REDIS_RATE_LIMIT_URL!,
-);
+export const redisRateLimitClient = new Redis(config.REDIS_RATE_LIMIT_URL);
 
-const createRateLimiter = (keyPrefix, points) =>
+const createRateLimiter = (keyPrefix: string, points: number) =>
   new RateLimiterRedis({
     storeClient: redisRateLimitClient,
     keyPrefix,

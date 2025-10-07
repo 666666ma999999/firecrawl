@@ -12,6 +12,7 @@ import { setValue } from "../services/redis";
 import { validate } from "uuid";
 import * as Sentry from "@sentry/node";
 import { AuthCreditUsageChunk, AuthCreditUsageChunkFromTeam } from "./v1/types";
+import { isSelfHosted } from "../lib/deployment";
 // const { data, error } = await supabase_service
 //     .from('api_keys')
 //     .select(`
@@ -166,7 +167,7 @@ export async function getACUC(
     return acuc;
   }
 
-  if (process.env.USE_DB_AUTHENTICATION !== "true") {
+  if (isSelfHosted()) {
     const acuc = mockACUC();
     acuc.is_extract = isExtract;
     return acuc;
@@ -292,7 +293,7 @@ export async function getACUCTeam(
     return acuc;
   }
 
-  if (process.env.USE_DB_AUTHENTICATION !== "true") {
+  if (isSelfHosted()) {
     const acuc = mockACUC();
     acuc.is_extract = isExtract;
     return acuc;

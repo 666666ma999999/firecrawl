@@ -1,4 +1,5 @@
 import { Logger } from "winston";
+import { config } from "../../config";
 import { logger } from "../../lib/logger";
 import { Client, Pool } from "pg";
 import { type ScrapeJobData } from "../../types";
@@ -8,7 +9,7 @@ import amqp from "amqplib";
 // === Basics
 
 const nuqPool = new Pool({
-  connectionString: process.env.NUQ_DATABASE_URL, // may be a pgbouncer transaction pooler URL
+  connectionString: config.NUQ_DATABASE_URL, // may be a pgbouncer transaction pooler URL
   application_name: "nuq",
 });
 

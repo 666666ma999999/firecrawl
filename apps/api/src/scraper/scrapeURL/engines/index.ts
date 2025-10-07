@@ -18,6 +18,7 @@ import { useIndex } from "../../../services";
 import { hasFormatOfType } from "../../../lib/format-utils";
 import { getPDFMaxPages } from "../../../controllers/v2/types";
 import { PdfMetadata } from "@mendable/firecrawl-rs";
+import { config } from "../../../config";
 
 export type Engine =
   | "fire-engine;chrome-cdp"
@@ -38,9 +39,10 @@ export type Engine =
 const useFireEngine =
   process.env.FIRE_ENGINE_BETA_URL !== "" &&
   process.env.FIRE_ENGINE_BETA_URL !== undefined;
+
 const usePlaywright =
-  process.env.PLAYWRIGHT_MICROSERVICE_URL !== "" &&
-  process.env.PLAYWRIGHT_MICROSERVICE_URL !== undefined;
+  config.PLAYWRIGHT_MICROSERVICE_URL !== "" &&
+  config.PLAYWRIGHT_MICROSERVICE_URL !== undefined;
 
 const engines: Engine[] = [
   ...(useIndex ? ["index" as const, "index;documents" as const] : []),

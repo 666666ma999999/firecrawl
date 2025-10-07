@@ -35,6 +35,7 @@ import { nuqShutdown } from "./services/worker/nuq";
 import { getErrorContactMessage } from "./lib/deployment";
 import { initializeBlocklist } from "./scraper/WebScraper/utils/blocklist";
 import responseTime from "response-time";
+import { config } from "./config";
 
 const { createBullBoard } = require("@bull-board/api");
 const { BullMQAdapter } = require("@bull-board/api/bullMQAdapter");
@@ -70,7 +71,7 @@ if (process.env.EXPRESS_TRUST_PROXY) {
 }
 
 const serverAdapter = new ExpressAdapter();
-serverAdapter.setBasePath(`/admin/${process.env.BULL_AUTH_KEY}/queues`);
+serverAdapter.setBasePath(`/admin/${config.BULL_AUTH_KEY}/queues`);
 
 const { addQueue, removeQueue, setQueues, replaceQueues } = createBullBoard({
   queues: [
@@ -83,10 +84,7 @@ const { addQueue, removeQueue, setQueues, replaceQueues } = createBullBoard({
   serverAdapter: serverAdapter,
 });
 
-app.use(
-  `/admin/${process.env.BULL_AUTH_KEY}/queues`,
-  serverAdapter.getRouter(),
-);
+app.use(`/admin/${config.BULL_AUTH_KEY}/queues`, serverAdapter.getRouter());
 
 app.get("/", (req, res) => {
   res.send("SCRAPERS-JS: Hello, world! K8s!");
@@ -104,8 +102,8 @@ app.use("/v2", v2Router);
 app.use(adminRouter);
 app.use(domainFrequencyRouter);
 
-const DEFAULT_PORT = process.env.PORT ?? 3002;
-const HOST = process.env.HOST ?? "localhost";
+const DEFAULT_PORT = config.PORT ?? 3002;
+const HOST = config.HOST ?? "localhost";
 
 async function startServer(port = DEFAULT_PORT) {
   try {

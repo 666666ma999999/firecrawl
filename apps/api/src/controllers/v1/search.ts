@@ -225,7 +225,8 @@ export async function searchController(
   res: Response<SearchResponse>,
 ) {
   // Get timing data from middleware (includes all middleware processing time)
-  const middlewareStartTime = (req as any).requestTiming?.startTime || new Date().getTime();
+  const middlewareStartTime =
+    (req as any).requestTiming?.startTime || new Date().getTime();
   const controllerStartTime = new Date().getTime();
 
   const jobId = uuidv4();
@@ -452,7 +453,10 @@ export async function searchController(
     // Log final timing information
     const totalRequestTime = new Date().getTime() - middlewareStartTime;
     const controllerTime = new Date().getTime() - controllerStartTime;
-    const scrapeful = !!(req.body.scrapeOptions.formats && req.body.scrapeOptions.formats.length > 0);
+    const scrapeful = !!(
+      req.body.scrapeOptions.formats &&
+      req.body.scrapeOptions.formats.length > 0
+    );
     logger.info("Request metrics", {
       version: "v1",
       mode: "search",
@@ -477,9 +481,9 @@ export async function searchController(
     }
 
     Sentry.captureException(error);
-    logger.error("Unhandled error occurred in search", { 
+    logger.error("Unhandled error occurred in search", {
       version: "v1",
-      error 
+      error,
     });
     return res.status(500).json({
       success: false,

@@ -14,6 +14,7 @@ import { generateCrawlerOptionsFromPrompt } from "../../scraper/scrapeURL/transf
 import { CostTracking } from "../../lib/cost-tracking";
 import { checkPermissions } from "../../lib/permissions";
 import { buildPromptWithWebsiteStructure } from "../../lib/map-utils";
+import { isSelfHosted } from "../../lib/deployment";
 
 export async function crawlController(
   req: RequestWithAuth<{}, CrawlResponse, CrawlRequest>,
@@ -49,8 +50,7 @@ export async function crawlController(
   });
 
   let { remainingCredits } = req.account!;
-  const useDbAuthentication = process.env.USE_DB_AUTHENTICATION === "true";
-  if (!useDbAuthentication) {
+  if (isSelfHosted()) {
     remainingCredits = Infinity;
   }
 

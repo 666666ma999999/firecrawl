@@ -5,6 +5,7 @@ import { serper_search } from "./serper";
 import { searxng_search } from "./searxng";
 import { fire_engine_search } from "./fireEngine";
 import { Logger } from "winston";
+import { config } from "../config";
 
 export async function search({
   query,
@@ -46,7 +47,8 @@ export async function search({
       });
       return results;
     }
-    if (process.env.SERPER_API_KEY) {
+
+    if (config.SERPER_API_KEY) {
       logger.info("Using serper search");
       const results = await serper_search(query, {
         num_results,
@@ -58,7 +60,8 @@ export async function search({
       });
       if (results.length > 0) return results;
     }
-    if (process.env.SEARCHAPI_API_KEY) {
+
+    if (config.SEARCHAPI_API_KEY) {
       logger.info("Using searchapi search");
       const results = await searchapi_search(query, {
         num_results,
@@ -70,7 +73,8 @@ export async function search({
       });
       if (results.length > 0) return results;
     }
-    if (process.env.SEARXNG_ENDPOINT) {
+
+    if (config.SEARXNG_ENDPOINT) {
       logger.info("Using searxng search");
       const results = await searxng_search(query, {
         num_results,
@@ -82,6 +86,7 @@ export async function search({
       });
       if (results.length > 0) return results;
     }
+
     logger.info("Using google search");
     return await googleSearch(
       query,

@@ -246,18 +246,18 @@ export function countryCheck(
 export function requestTimingMiddleware(version: string) {
   return (req: Request, res: Response, next: NextFunction) => {
     const startTime = new Date().getTime();
-    
+
     // Attach timing data to request
     (req as any).requestTiming = {
       startTime,
-      version
+      version,
     };
 
     // Override res.json to log timing when response is sent
     const originalJson = res.json.bind(res);
-    res.json = function(body: any) {
+    res.json = function (body: any) {
       const requestTime = new Date().getTime() - startTime;
-      
+
       // Only log for successful responses to avoid duplicate error logs
       if (body?.success !== false) {
         logger.info(`${version} request completed`, {
@@ -269,7 +269,7 @@ export function requestTimingMiddleware(version: string) {
           statusCode: res.statusCode,
         });
       }
-      
+
       return originalJson(body);
     };
 

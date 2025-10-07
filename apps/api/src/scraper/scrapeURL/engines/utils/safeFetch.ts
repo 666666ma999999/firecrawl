@@ -4,6 +4,7 @@ import * as undici from "undici";
 import { CookieJar } from "tough-cookie";
 import { cookie } from "http-cookie-agent/undici";
 import IPAddr from "ipaddr.js";
+import { config } from "../../../../config";
 
 export class InsecureConnectionError extends Error {
   constructor() {
@@ -23,13 +24,13 @@ function makeSecureDispatcher(skipTlsVerification: boolean) {
     maxRedirections: 5000,
   };
 
-  const baseAgent = process.env.PROXY_SERVER
+  const baseAgent = config.PROXY_SERVER
     ? new undici.ProxyAgent({
-        uri: process.env.PROXY_SERVER.includes("://")
-          ? process.env.PROXY_SERVER
-          : "http://" + process.env.PROXY_SERVER,
-        token: process.env.PROXY_USERNAME
-          ? `Basic ${Buffer.from(process.env.PROXY_USERNAME + ":" + (process.env.PROXY_PASSWORD ?? "")).toString("base64")}`
+        uri: config.PROXY_SERVER.includes("://")
+          ? config.PROXY_SERVER
+          : "http://" + config.PROXY_SERVER,
+        token: config.PROXY_USERNAME
+          ? `Basic ${Buffer.from(config.PROXY_USERNAME + ":" + (config.PROXY_PASSWORD ?? "")).toString("base64")}`
           : undefined,
         requestTls: {
           rejectUnauthorized: !skipTlsVerification, // Only bypass SSL verification if explicitly requested
@@ -57,7 +58,7 @@ function makeSecureDispatcher(skipTlsVerification: boolean) {
     if (
       socket.remoteAddress &&
       isIPPrivate(socket.remoteAddress) &&
-      process.env.ALLOW_LOCAL_WEBHOOKS !== "true"
+      !config.ALLOW_LOCAL_WEBHOOKS
     ) {
       socket.destroy(new InsecureConnectionError());
     }

@@ -1,6 +1,7 @@
 import express from "express";
 import { RateLimiterMode } from "../types";
 import expressWs from "express-ws";
+import { config } from "../config";
 import { searchController } from "../controllers/v2/search";
 import { x402SearchController } from "../controllers/v2/x402-search";
 import { scrapeController } from "../controllers/v2/scrape";
@@ -46,17 +47,12 @@ v2Router.use(requestTimingMiddleware("v2"));
 // x402 payments protocol - https://github.com/coinbase/x402
 v2Router.use(
   paymentMiddleware(
-    (process.env.X402_PAY_TO_ADDRESS as `0x${string}`) ||
+    (config.X402_PAY_TO_ADDRESS as `0x${string}`) ||
       "0x0000000000000000000000000000000000000000",
     {
       "POST /x402/search": {
-        price: process.env.X402_ENDPOINT_PRICE_USD as string,
-        network: process.env.X402_NETWORK as
-          | "base-sepolia"
-          | "base"
-          | "avalanche-fuji"
-          | "avalanche"
-          | "iotex",
+        price: config.X402_ENDPOINT_PRICE_USD,
+        network: config.X402_NETWORK,
         config: {
           discoverable: true,
           description:

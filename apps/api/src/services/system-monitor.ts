@@ -2,15 +2,10 @@ import si from "systeminformation";
 import { Mutex } from "async-mutex";
 import os from "os";
 import fs from "fs";
+import { config } from "../config";
 import { logger } from "../lib/logger";
 
 const IS_KUBERNETES = process.env.IS_KUBERNETES === "true";
-
-const MAX_CPU = process.env.MAX_CPU ? parseFloat(process.env.MAX_CPU) : 0.8;
-const MAX_RAM = process.env.MAX_RAM ? parseFloat(process.env.MAX_RAM) : 0.8;
-const CACHE_DURATION = process.env.SYS_INFO_MAX_CACHE_DURATION
-  ? parseFloat(process.env.SYS_INFO_MAX_CACHE_DURATION)
-  : 150;
 
 class SystemMonitor {
   private static instance: SystemMonitor;
@@ -88,7 +83,7 @@ class SystemMonitor {
     const now = Date.now();
     if (
       this.memoryUsageCache !== null &&
-      now - this.lastMemoryCheck < CACHE_DURATION
+      now - this.lastMemoryCheck < config.SYS_INFO_MAX_CACHE_DURATION
     ) {
       return this.memoryUsageCache;
     }
@@ -196,7 +191,7 @@ class SystemMonitor {
     const now = Date.now();
     if (
       this.cpuUsageCache !== null &&
-      now - this.lastCpuCheck < CACHE_DURATION
+      now - this.lastCpuCheck < config.SYS_INFO_MAX_CACHE_DURATION
     ) {
       return this.cpuUsageCache;
     }
@@ -214,7 +209,7 @@ class SystemMonitor {
     const cpuUsage = await this.checkCpuUsage();
     const memoryUsage = await this.checkMemoryUsage();
 
-    return cpuUsage < MAX_CPU && memoryUsage < MAX_RAM;
+    return cpuUsage < config.MAX_CPU && memoryUsage < config.MAX_RAM;
   }
 
   public clearCache() {

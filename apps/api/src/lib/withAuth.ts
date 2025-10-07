@@ -1,4 +1,5 @@
 import { AuthResponse } from "../../src/types";
+import { isSelfHosted } from "./deployment";
 import { logger } from "./logger";
 import * as Sentry from "@sentry/node";
 import { configDotenv } from "dotenv";
@@ -11,8 +12,7 @@ export function withAuth<T, U extends any[]>(
   mockSuccess: T,
 ) {
   return async function (...args: U): Promise<T> {
-    const useDbAuthentication = process.env.USE_DB_AUTHENTICATION === "true";
-    if (!useDbAuthentication) {
+    if (isSelfHosted()) {
       if (warningCount < 5) {
         logger.warn("You're bypassing authentication");
         warningCount++;

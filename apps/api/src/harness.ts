@@ -1,4 +1,4 @@
-import "dotenv/config";
+import { config } from "./config";
 import { type ChildProcess, spawn } from "child_process";
 import * as net from "net";
 import { basename } from "path";
@@ -69,8 +69,6 @@ function formatDuration(nanoseconds: bigint): string {
 }
 
 const stream = createWriteStream("firecrawl.log");
-
-const PORT = process.env.PORT ?? "3002";
 
 const logger = {
   section(message: string) {
@@ -383,19 +381,18 @@ function startServices(command?: string[]): Services {
       )
     : undefined;
 
-  const indexWorker =
-    process.env.USE_DB_AUTHENTICATION === "true"
-      ? execForward(
-          "index-worker",
-          process.argv[2] === "--start-docker"
-            ? "node --import ./dist/src/otel.js dist/src/services/indexing/index-worker.js"
-            : "pnpm index-worker:production",
-          {
-            NUQ_REDUCE_NOISE: "true",
-            NUQ_POD_NAME: "index-worker",
-          },
-        )
-      : undefined;
+  const indexWorker = config.USE_DB_AUTHENTICATION
+    ? execForward(
+        "index-worker",
+        process.argv[2] === "--start-docker"
+          ? "node --import ./dist/src/otel.js dist/src/services/indexing/index-worker.js"
+          : "pnpm index-worker:production",
+        {
+          NUQ_REDUCE_NOISE: "true",
+          NUQ_POD_NAME: "index-worker",
+        },
+      )
+    : undefined;
 
   const commandProcess =
     command && !command?.[0].startsWith("--")
@@ -443,8 +440,8 @@ async function runDevMode(): Promise<void> {
 
     currentServices = startServices();
 
-    logger.info(`Waiting for API on localhost:${PORT}`);
-    await waitForPort(Number(PORT), "localhost");
+    logger.info(`Waiting for API on localhost:${config.PORT}`);
+    await waitForPort(config.PORT, "localhost");
     logger.success("API is ready");
 
     isFirstStart = false;
@@ -459,7 +456,7 @@ async function runDevMode(): Promise<void> {
 
       currentServices = startServices();
 
-      await waitForPort(Number(PORT), "localhost");
+      await waitForPort(config.PORT, "localhost");
       logger.success("Services restarted");
     }
   });
@@ -485,8 +482,8 @@ async function runDevMode(): Promise<void> {
 async function runProductionMode(command: string[]): Promise<void> {
   const services = startServices(command);
 
-  logger.info(`Waiting for API on localhost:${PORT}`);
-  await waitForPort(Number(PORT), "localhost");
+  logger.info(`Waiting for API on localhost:${config.PORT}`);
+  await waitForPort(config.PORT, "localhost");
 
   await waitForTermination(services);
 }

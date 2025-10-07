@@ -2,6 +2,7 @@ import { Request, Response } from "express";
 import Redis from "ioredis";
 import { logger } from "../../../lib/logger";
 import { redisRateLimitClient } from "../../../services/rate-limiter";
+import { config } from "../../../config";
 
 export async function redisHealthController(req: Request, res: Response) {
   const retryOperation = async (operation, retries = 3) => {
@@ -17,13 +18,13 @@ export async function redisHealthController(req: Request, res: Response) {
   };
 
   try {
-    const queueRedis = new Redis(process.env.REDIS_URL!);
+    const queueRedis = new Redis(config.REDIS_URL);
 
     const testKey = "test";
     const testValue = "test";
 
     // Test queueRedis
-    let queueRedisHealth;
+    let queueRedisHealth: string | null = null;
     try {
       await retryOperation(() => queueRedis.set(testKey, testValue));
       queueRedisHealth = await retryOperation(() => queueRedis.get(testKey));
@@ -34,7 +35,7 @@ export async function redisHealthController(req: Request, res: Response) {
     }
 
     // Test redisRateLimitClient
-    let redisRateLimitHealth;
+    let redisRateLimitHealth: string | null = null;
     try {
       await retryOperation(() => redisRateLimitClient.set(testKey, testValue));
       redisRateLimitHealth = await retryOperation(() =>

@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { logger } from "../../lib/logger";
 import { configDotenv } from "dotenv";
+import { config } from "../../config";
 configDotenv();
 
 // SupabaseLedgerService class initializes the Supabase client for the ledger schema
@@ -12,10 +13,9 @@ class SupabaseLedgerService {
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseReplicaUrl = process.env.SUPABASE_REPLICA_URL;
     const supabaseServiceToken = process.env.SUPABASE_SERVICE_TOKEN;
-    const useDbAuthentication = process.env.USE_DB_AUTHENTICATION === "true";
 
     // Only initialize the Supabase client if both URL and Service Token are provided.
-    if (!useDbAuthentication) {
+    if (!config.USE_DB_AUTHENTICATION) {
       // Warn the user that Authentication is disabled by setting the client to null
       logger.warn(
         "Authentication is disabled. Supabase ledger client will not be initialized.",
