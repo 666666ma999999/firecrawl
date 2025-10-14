@@ -10,6 +10,8 @@ function getDocumentTypeFromUrl(url: string): DocumentType {
   if (urlLower.endsWith(".docx")) return DocumentType.Docx;
   if (urlLower.endsWith(".odt")) return DocumentType.Odt;
   if (urlLower.endsWith(".rtf")) return DocumentType.Rtf;
+  if (urlLower.endsWith(".xlsx") || urlLower.endsWith(".xls"))
+    return DocumentType.Xlsx;
 
   return DocumentType.Docx; // hope for the best
 }
@@ -36,6 +38,15 @@ function getDocumentTypeFromContentType(
 
   if (ct.includes("application/rtf") || ct.includes("text/rtf")) {
     return DocumentType.Rtf;
+  }
+
+  if (
+    ct.includes(
+      "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+    ) ||
+    ct.includes("application/vnd.ms-excel")
+  ) {
+    return DocumentType.Xlsx;
   }
 
   return null;
