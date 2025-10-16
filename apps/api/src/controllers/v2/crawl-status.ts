@@ -23,6 +23,8 @@ import { supabase_rr_service, supabase_service } from "../../services/supabase";
 import { getJobFromGCS } from "../../lib/gcs-jobs";
 import { scrapeQueue, NuQJob, NuQJobStatus } from "../../services/worker/nuq";
 import { ScrapeJobSingleUrls } from "../../types";
+import { redisEvictConnection } from "../../../src/services/redis";
+import { isBaseDomain, extractBaseDomain } from "../../lib/url-utils";
 configDotenv();
 
 export type PseudoJob<T> = {
@@ -198,28 +200,39 @@ export async function crawlStatusController(
       .eq("job_id", req.params.jobId)
       .limit(1);
 
-    if (crawlJobError) {
-      logger.error("Error getting crawl job", { error: crawlJobError });
-      throw new Error("Error getting crawl job", { cause: crawlJobError });
+    let crawlAdded: Date;
+    let crawlTeamId: string;
+
+    if (crawlJobError || !crawlJobs || crawlJobs.length === 0) {
+      const { data: scrapeJobs, error: scrapeJobError } =
+        await supabase_rr_service
+          .from("firecrawl_jobs")
+          .select("*")
+          .eq("crawl_id", req.params.jobId)
+          .order("date_added", { ascending: false })
+          .limit(1);
+
+      if (scrapeJobError || !scrapeJobs || scrapeJobs.length === 0) {
+        return res.status(404).json({ success: false, error: "Job not found" });
+      }
+
+      const scrapeJob = scrapeJobs[0];
+      crawlAdded = new Date(scrapeJob.date_added); // use last scrape as date added for crawl
+      crawlTeamId = scrapeJob.team_id;
+    } else {
+      const crawlJob = crawlJobs[0];
+      crawlAdded = new Date(crawlJob.date_added);
+      crawlTeamId = crawlJob.team_id;
     }
 
-    if (!crawlJobs || crawlJobs.length === 0) {
-      return res.status(404).json({ success: false, error: "Job not found" });
-    }
-
-    const crawlJob = crawlJobs[0];
-
-    if (crawlJob.team_id !== req.auth.team_id) {
+    if (crawlTeamId !== req.auth.team_id) {
       return res.status(404).json({ success: false, error: "Job not found" });
     }
 
     const crawlTtlHours = req.acuc?.flags?.crawlTtlHours ?? 24;
     const crawlTtlMs = crawlTtlHours * 60 * 60 * 1000;
 
-    if (
-      new Date().valueOf() - new Date(crawlJob.date_added).valueOf() >
-      crawlTtlMs
-    ) {
+    if (new Date().valueOf() - crawlAdded.valueOf() > crawlTtlMs) {
       return res.status(404).json({ success: false, error: "Job expired" });
     }
   } else {
@@ -335,65 +348,7 @@ export async function crawlStatusController(
     next: string | undefined;
   };
 
-  if (process.env.USE_DB_AUTHENTICATION === "true" && !isPreviewTeam) {
-    // new DB-based path
-    const { data, error } = await supabase_service.rpc(
-      "crawl_status_1",
-      {
-        i_team_id: req.auth.team_id,
-        i_crawl_id: req.params.jobId,
-        i_start: start,
-        i_end: end ?? start + 100,
-      },
-      { get: true },
-    );
-
-    if (error || !data) {
-      logger.error("Error getting crawl status from DB", { error });
-      throw new Error("Error getting crawl status from DB", { cause: error });
-    }
-
-    const scrapeIds = data?.map(x => x.id) ?? [];
-    let scrapes: Document[] = [];
-    let iteratedOver = 0;
-    let bytes = 0;
-    const bytesLimit = 10485760; // 10 MiB in bytes
-
-    const scrapeBlobs = await Promise.all(
-      scrapeIds.map(async x => [x, (await getJobFromGCS(x))?.[0]]),
-    );
-
-    for (const [id, scrape] of scrapeBlobs) {
-      if (scrape) {
-        scrapes.push(scrape);
-        bytes += JSON.stringify(scrape).length;
-      } else {
-        logger.warn("Job was considered done, but returnvalue is undefined!", {
-          jobId: id,
-          returnvalue: scrape,
-        });
-      }
-
-      iteratedOver++;
-
-      if (bytes > bytesLimit) {
-        break;
-      }
-    }
-
-    if (bytes > bytesLimit && scrapes.length !== 1) {
-      scrapes.splice(scrapes.length - 1, 1);
-      iteratedOver--;
-    }
-
-    outputBulkB = {
-      data: scrapes,
-      next:
-        (outputBulkA.total ?? 0) > start + iteratedOver
-          ? `${process.env.ENV === "local" ? req.protocol : "https"}://${req.get("host")}/v2/${isBatch ? "batch/scrape" : "crawl"}/${req.params.jobId}?skip=${start + iteratedOver}${req.query.limit ? `&limit=${req.query.limit}` : ""}`
-          : undefined,
-    };
-  } else {
+  if (sc || process.env.USE_DB_AUTHENTICATION !== "true" || isPreviewTeam) {
     const doneJobs = await getDoneJobsOrderedUntil(
       req.params.jobId,
       djoCutoff,
@@ -454,6 +409,97 @@ export async function crawlStatusController(
           ? `${process.env.ENV === "local" ? req.protocol : "https"}://${req.get("host")}/v2/${isBatch ? "batch/scrape" : "crawl"}/${req.params.jobId}?skip=${start + iteratedOver}${req.query.limit ? `&limit=${req.query.limit}` : ""}`
           : undefined,
     };
+  } else {
+    // new DB-based path
+    const { data, error } = await supabase_service.rpc(
+      "crawl_status_1",
+      {
+        i_team_id: req.auth.team_id,
+        i_crawl_id: req.params.jobId,
+        i_start: start,
+        i_end: end ?? start + 100,
+      },
+      { get: true },
+    );
+
+    if (error || !data) {
+      logger.error("Error getting crawl status from DB", { error });
+      throw new Error("Error getting crawl status from DB", { cause: error });
+    }
+
+    const scrapeIds = data?.map(x => x.id) ?? [];
+    let scrapes: Document[] = [];
+    let iteratedOver = 0;
+    let bytes = 0;
+    const bytesLimit = 10485760; // 10 MiB in bytes
+
+    const scrapeBlobs = await Promise.all(
+      scrapeIds.map(async x => [x, (await getJobFromGCS(x))?.[0]]),
+    );
+
+    for (const [id, scrape] of scrapeBlobs) {
+      if (scrape) {
+        scrapes.push(scrape);
+        bytes += JSON.stringify(scrape).length;
+      } else {
+        logger.warn("Job was considered done, but returnvalue is undefined!", {
+          jobId: id,
+          returnvalue: scrape,
+        });
+      }
+
+      iteratedOver++;
+
+      if (bytes > bytesLimit) {
+        break;
+      }
+    }
+
+    if (bytes > bytesLimit && scrapes.length !== 1) {
+      scrapes.splice(scrapes.length - 1, 1);
+      iteratedOver--;
+    }
+
+    outputBulkB = {
+      data: scrapes,
+      next:
+        (outputBulkA.total ?? 0) > start + iteratedOver
+          ? `${process.env.ENV === "local" ? req.protocol : "https"}://${req.get("host")}/v2/${isBatch ? "batch/scrape" : "crawl"}/${req.params.jobId}?skip=${start + iteratedOver}${req.query.limit ? `&limit=${req.query.limit}` : ""}`
+          : undefined,
+    };
+  }
+
+  // Check for robots.txt blocked URLs and add warning if found
+  let warning: string | undefined;
+  try {
+    const robotsBlocked = await redisEvictConnection.smembers(
+      "crawl:" + req.params.jobId + ":robots_blocked",
+    );
+    if (robotsBlocked && robotsBlocked.length > 0) {
+      warning =
+        "One or more pages were unable to be crawled because the robots.txt file prevented this. Please use the /scrape endpoint instead.";
+    }
+  } catch (error) {
+    // If we can't check robots blocked URLs, continue without warning
+    logger.debug("Failed to check robots blocked URLs", { error });
+  }
+
+  // Check if we should warn about base domain for crawl results
+  const resultCount = outputBulkA.completed ?? outputBulkA.total ?? outputBulkB.data.length;
+  if (!warning && resultCount <= 1) {
+    // Get the original crawl URL and options from stored crawl data
+    const crawl = await getCrawl(req.params.jobId);
+    if (crawl && crawl.originUrl && !isBaseDomain(crawl.originUrl)) {
+      // Don't show warning if user is already using crawlEntireDomain
+      const isUsingCrawlEntireDomain =
+        crawl.crawlerOptions?.crawlEntireDomain === true;
+      if (!isUsingCrawlEntireDomain) {
+        const baseDomain = extractBaseDomain(crawl.originUrl);
+        if (baseDomain) {
+          warning = `Only ${resultCount} result(s) found. For broader coverage, try crawling with crawlEntireDomain=true or start from a higher-level path like ${baseDomain}`;
+        }
+      }
+    }
   }
 
   return res.status(200).json({
@@ -465,5 +511,6 @@ export async function crawlStatusController(
     expiresAt: (await getCrawlExpiry(req.params.jobId)).toISOString(),
     next: outputBulkB.next,
     data: outputBulkB.data,
+    ...(warning && { warning }),
   });
 }

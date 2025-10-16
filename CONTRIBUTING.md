@@ -2,17 +2,18 @@
 
 Welcome to [Firecrawl](https://firecrawl.dev) 🔥! Here are some instructions on how to get the project locally, so you can run it on your own (and contribute)
 
-If you're contributing, note that the process is similar to other open source repos i.e. (fork firecrawl, make changes, run tests, PR). If you have any questions, and would like help gettin on board, reach out to help@firecrawl.com for more or submit an issue!
+If you're contributing, note that the process is similar to other open source repos i.e. (fork firecrawl, make changes, run tests, PR). If you have any questions, and would like help getting on board, reach out to help@firecrawl.com for more or submit an issue!
 
 ## Running the project locally
 
 First, start by installing dependencies:
 
 1. node.js [instructions](https://nodejs.org/en/learn/getting-started/how-to-install-nodejs)
-2. pnpm [instructions](https://pnpm.io/installation)
-3. redis [instructions](https://redis.io/docs/latest/operate/oss_and_stack/install/install-redis/)
-4. postgresql
-5. Docker (optional) (for running postgres)
+2. rust [instructions](https://www.rust-lang.org/tools/install)
+3. pnpm [instructions](https://pnpm.io/installation)
+4. redis [instructions](https://redis.io/docs/latest/operate/oss_and_stack/install/install-redis/)
+5. postgresql
+6. Docker (optional) (for running postgres)
 
 You need to set up the PostgreSQL database by running the SQL file at `apps/nuq-postgres/nuq.sql`. Easiest way is to use the docker image inside `apps/nuq-postgres`. With Docker running, build the image:
 
@@ -32,7 +33,7 @@ docker run --name nuqdb \
 
 Set environment variables in a .env in the /apps/api/ directory you can copy over the template in .env.example.
 
-To start, we wont set up authentication, or any optional sub services (pdf parsing, JS blocking support, AI features )
+To start, we won't set up authentication, or any optional sub services (pdf parsing, JS blocking support, AI features)
 
 .env:
 
