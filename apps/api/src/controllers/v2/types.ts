@@ -19,8 +19,10 @@ import { ErrorCodes } from "../../lib/error";
 import Ajv from "ajv";
 import { integrationSchema } from "../../utils/integration";
 import { webhookSchema } from "../../services/webhook/schema";
+import { modifyCrawlUrl } from "../../utils/url-utils";
 
-export const url = z.preprocess(
+// Base URL schema with common validation logic
+const BASE_URL_SCHEMA = z.preprocess(
   x => {
     if (!protocolIncluded(x as string)) {
       x = `http://${x}`;
@@ -60,8 +62,147 @@ export const url = z.preprocess(
   // .refine((x) => !isUrlBlocked(x as string), BLOCKLISTED_URL_MESSAGE),
 );
 
+// Standard URL schema
+export const URL = BASE_URL_SCHEMA;
+
+// Crawl URL schema with modification handling
+const CRAWL_URL = BASE_URL_SCHEMA.transform(url => modifyCrawlUrl(url));
+
 const strictMessage =
   "Unrecognized key in body -- please review the v2 API documentation for request body changes";
+
+function normalizeSchemaForOpenAI(schema: any): any {
+  if (!schema || typeof schema !== "object") {
+    return schema;
+  }
+
+  const visited = new WeakSet();
+
+  function normalizeObject(obj: any): any {
+    if (typeof obj !== "object" || obj === null) return obj;
+    if (Array.isArray(obj)) {
+      return obj.map(item => normalizeObject(item));
+    }
+
+    if (visited.has(obj)) return obj;
+    visited.add(obj);
+
+    const normalized = { ...obj };
+
+    // Handle $ref recursion - preserve as-is for OpenAI compatibility
+    if (normalized.hasOwnProperty("$ref")) {
+      return normalized;
+    }
+
+    if (normalized.hasOwnProperty("$defs")) {
+      const { $defs, ...rest } = normalized;
+      const processedRest = {};
+
+      for (const [key, value] of Object.entries(rest)) {
+        if (
+          typeof value === "object" &&
+          value !== null &&
+          !value.hasOwnProperty("$ref")
+        ) {
+          processedRest[key] = normalizeObject(value);
+        } else {
+          processedRest[key] = value;
+        }
+      }
+
+      return { ...processedRest, $defs };
+    }
+
+    if (
+      normalized.type === "object" &&
+      normalized.hasOwnProperty("properties") &&
+      normalized.hasOwnProperty("additionalProperties")
+    ) {
+      delete normalized.additionalProperties;
+    }
+
+    if (
+      normalized.type === "object" &&
+      normalized.hasOwnProperty("required") &&
+      normalized.hasOwnProperty("properties")
+    ) {
+      if (
+        Array.isArray(normalized.required) &&
+        typeof normalized.properties === "object" &&
+        normalized.properties !== null
+      ) {
+        const validRequired = normalized.required.filter((field: string) =>
+          normalized.properties.hasOwnProperty(field),
+        );
+        if (validRequired.length > 0) {
+          normalized.required = validRequired;
+        } else {
+          delete normalized.required;
+        }
+      } else {
+        delete normalized.required;
+      }
+    }
+
+    for (const [key, value] of Object.entries(normalized)) {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        !value.hasOwnProperty("$ref")
+      ) {
+        normalized[key] = normalizeObject(value);
+      }
+    }
+
+    return normalized;
+  }
+
+  return normalizeObject(schema);
+}
+
+function validateSchemaForOpenAI(schema: any): boolean {
+  if (!schema || typeof schema !== "object") {
+    return true;
+  }
+
+  const visited = new WeakSet();
+
+  function hasInvalidStructure(obj: any): boolean {
+    if (typeof obj !== "object" || obj === null) return false;
+
+    if (visited.has(obj)) return false;
+    visited.add(obj);
+
+    if (obj.hasOwnProperty("$ref")) {
+      return false;
+    }
+
+    if (
+      obj.type === "object" &&
+      !obj.hasOwnProperty("properties") &&
+      !obj.hasOwnProperty("patternProperties") &&
+      obj.additionalProperties === true
+    ) {
+      return true;
+    }
+
+    for (const value of Object.values(obj)) {
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        !value.hasOwnProperty("$ref")
+      ) {
+        if (hasInvalidStructure(value)) return true;
+      }
+    }
+    return false;
+  }
+
+  return !hasInvalidStructure(schema);
+}
+
+const OPENAI_SCHEMA_ERROR_MESSAGE =
+  "Schema contains invalid structure for OpenAI: object type with no 'properties' defined but 'additionalProperties: true' (schema-less dictionary not supported by OpenAI). Please define specific properties for your object. Note: Recursive schemas using '$ref' are supported.";
 
 const ACTIONS_MAX_WAIT_TIME = 60;
 const MAX_ACTIONS = 50;
@@ -174,7 +315,13 @@ const actionsSchema = z
 const jsonFormatWithOptions = z
   .object({
     type: z.literal("json"),
-    schema: z.any().optional(),
+    schema: z
+      .any()
+      .optional()
+      .transform(val => normalizeSchemaForOpenAI(val))
+      .refine(val => validateSchemaForOpenAI(val), {
+        message: OPENAI_SCHEMA_ERROR_MESSAGE,
+      }),
     prompt: z.string().max(10000).optional(),
   })
   .strict();
@@ -185,7 +332,13 @@ const changeTrackingFormatWithOptions = z
   .object({
     type: z.literal("changeTracking"),
     prompt: z.string().optional(),
-    schema: z.any().optional(),
+    schema: z
+      .any()
+      .optional()
+      .transform(val => normalizeSchemaForOpenAI(val))
+      .refine(val => validateSchemaForOpenAI(val), {
+        message: OPENAI_SCHEMA_ERROR_MESSAGE,
+      }),
     modes: z.enum(["json", "git-diff"]).array().optional().default([]),
     tag: z.string().or(z.null()).default(null),
   })
@@ -373,7 +526,7 @@ const baseScrapeOptions = z
 
     location: locationSchema,
 
-    skipTlsVerification: z.boolean().default(true),
+    skipTlsVerification: z.boolean().optional(),
     removeBase64Images: z.boolean().default(true),
     fastMode: z.boolean().default(false),
     useMock: z.string().optional(),
@@ -456,8 +609,7 @@ const ajv = new Ajv();
 
 const extractOptions = z
   .object({
-    urls: url
-      .array()
+    urls: URL.array()
       .max(10, "Maximum of 10 URLs allowed per request while in beta.")
       .optional(),
     prompt: z.string().max(10000).optional(),
@@ -478,7 +630,11 @@ const extractOptions = z
         {
           message: "Invalid JSON schema.",
         },
-      ),
+      )
+      .transform(val => normalizeSchemaForOpenAI(val))
+      .refine(val => validateSchemaForOpenAI(val), {
+        message: OPENAI_SCHEMA_ERROR_MESSAGE,
+      }),
     limit: z.number().int().positive().finite().safe().optional(),
     ignoreSitemap: z.boolean().default(false),
     includeSubdomains: z.boolean().default(true),
@@ -530,7 +686,7 @@ export type ExtractRequestInput = z.input<typeof extractRequestSchema>;
 
 export const scrapeRequestSchema = baseScrapeOptions
   .extend({
-    url,
+    url: URL,
     origin: z.string().optional().default("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     zeroDataRetention: z.boolean().optional(),
@@ -544,7 +700,7 @@ export type ScrapeRequestInput = z.input<typeof scrapeRequestSchema>;
 
 export const batchScrapeRequestSchema = baseScrapeOptions
   .extend({
-    urls: url.array(),
+    urls: URL.array().min(1),
     origin: z.string().optional().default("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     webhook: webhookSchema.optional(),
@@ -559,7 +715,7 @@ export const batchScrapeRequestSchema = baseScrapeOptions
 
 export const batchScrapeRequestSchemaNoURLValidation = baseScrapeOptions
   .extend({
-    urls: z.string().array(),
+    urls: z.string().array().min(1),
     origin: z.string().optional().default("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     webhook: webhookSchema.optional(),
@@ -607,7 +763,7 @@ type CrawlerOptions = z.infer<typeof crawlerOptions>;
 
 export const crawlRequestSchema = crawlerOptions
   .extend({
-    url,
+    url: CRAWL_URL,
     origin: z.string().optional().default("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     scrapeOptions: baseScrapeOptions.default({}),
@@ -622,6 +778,7 @@ export const crawlRequestSchema = crawlerOptions
   .transform(x => {
     return {
       ...x,
+      url: x.url.url, // Extract the actual URL from the CRAWL_URL result
       scrapeOptions: extractTransform(x.scrapeOptions),
     };
   });
@@ -646,7 +803,7 @@ export const MAX_MAP_LIMIT = 100000;
 export const mapRequestSchema = crawlerOptions
   .omit({ sitemap: true, ignoreQueryParameters: true })
   .extend({
-    url,
+    url: URL,
     origin: z.string().optional().default("api"),
     integration: integrationSchema.optional().transform(val => val || null),
     includeSubdomains: z.boolean().default(true),
@@ -767,6 +924,7 @@ export type Document = {
     cachedAt?: string;
     creditsUsed?: number;
     postprocessorsUsed?: string[];
+    indexId?: string; // ID used to store the document in the index (GCS)
     // [key: string]: string | string[] | number | { smartScrape: number; other: number; total: number } | undefined;
   };
   serpResults?: {
@@ -832,6 +990,7 @@ export type CrawlResponse =
       success: true;
       id: string;
       url: string;
+      warning?: string;
     };
 
 export type BatchScrapeResponse =
@@ -856,6 +1015,7 @@ export type MapResponse =
   | {
       success: true;
       links?: MapDocument[];
+      warning?: string;
     };
 
 export type CrawlStatusParams = {
@@ -885,6 +1045,7 @@ export type CrawlStatusResponse =
       expiresAt: string;
       next?: string;
       data: Document[];
+      warning?: string;
     };
 
 export type OngoingCrawlsResponse =
@@ -1252,6 +1413,12 @@ const researchCategoryOptions = z
   })
   .strict();
 
+const pdfCategoryOptions = z
+  .object({
+    type: z.literal("pdf"),
+  })
+  .strict();
+
 export const searchRequestSchema = z
   .object({
     query: z.string(),
@@ -1284,13 +1451,19 @@ export const searchRequestSchema = z
     categories: z
       .union([
         // Array of strings (simple format)
-        z.array(z.enum(["github", "research"])),
+        z.array(z.enum(["github", "research", "pdf"])),
         // Array of objects (advanced format)
-        z.array(z.union([githubCategoryOptions, researchCategoryOptions])),
+        z.array(
+          z.union([
+            githubCategoryOptions,
+            researchCategoryOptions,
+            pdfCategoryOptions,
+          ]),
+        ),
       ])
       .optional(),
     lang: z.string().optional().default("en"),
-    country: z.string().optional().default("us"),
+    country: z.string().optional(),
     location: z.string().optional(),
     origin: z.string().optional().default("api"),
     integration: integrationSchema.optional().transform(val => val || null),
@@ -1337,6 +1510,9 @@ export const searchRequestSchema = z
   )
   .refine(x => waitForRefine(x.scrapeOptions), waitForRefineOpts)
   .transform(x => {
+    const country =
+      x.country !== undefined ? x.country : x.location ? undefined : "us";
+
     // Transform string array sources to object format
     let sources = x.sources;
     if (sources && Array.isArray(sources) && sources.length > 0) {
@@ -1351,7 +1527,7 @@ export const searchRequestSchema = z
                 tbs: x.tbs,
                 filter: x.filter,
                 lang: x.lang,
-                country: x.country,
+                country,
                 location: x.location,
               };
             case "images":
@@ -1364,7 +1540,7 @@ export const searchRequestSchema = z
                 type: "news" as const,
                 tbs: x.tbs,
                 lang: x.lang,
-                country: x.country,
+                country,
                 location: x.location,
               };
             default:
@@ -1391,6 +1567,10 @@ export const searchRequestSchema = z
               return {
                 type: "research" as const,
               };
+            case "pdf":
+              return {
+                type: "pdf" as const,
+              };
             default:
               return { type: c as any };
           }
@@ -1401,6 +1581,7 @@ export const searchRequestSchema = z
 
     return {
       ...x,
+      country,
       sources,
       categories,
       scrapeOptions: extractTransform(x.scrapeOptions),
@@ -1445,7 +1626,7 @@ export type TokenUsage = {
 };
 
 const generateLLMsTextRequestSchema = z.object({
-  url: url.describe("The URL to generate text from"),
+  url: URL.describe("The URL to generate text from"),
   maxUrls: z
     .number()
     .min(1)

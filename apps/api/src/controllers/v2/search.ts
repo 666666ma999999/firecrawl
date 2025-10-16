@@ -99,6 +99,7 @@ async function startScrapeJob(
     jobId,
     jobPriority,
     directToBullMQ,
+    true,
   );
 
   return jobId;
@@ -200,6 +201,11 @@ export async function searchController(
   req: RequestWithAuth<{}, SearchResponse, SearchRequest>,
   res: Response<SearchResponse>,
 ) {
+  // Get timing data from middleware (includes all middleware processing time)
+  const middlewareStartTime =
+    (req as any).requestTiming?.startTime || new Date().getTime();
+  const controllerStartTime = new Date().getTime();
+
   const jobId = uuidv4();
   let logger = _logger.child({
     jobId,
@@ -217,7 +223,7 @@ export async function searchController(
     });
   }
 
-  const startTime = new Date().getTime();
+  const middlewareTime = controllerStartTime - middlewareStartTime;
   const isSearchPreview =
     process.env.SEARCH_PREVIEW_TOKEN !== undefined &&
     process.env.SEARCH_PREVIEW_TOKEN === req.body.__searchPreviewToken;
@@ -228,6 +234,7 @@ export async function searchController(
     req.body = searchRequestSchema.parse(req.body);
 
     logger = logger.child({
+      version: "v2",
       query: req.body.query,
       origin: req.body.origin,
     });
@@ -469,7 +476,7 @@ export async function searchController(
         credits_billed = allJobIds.length; // Just for reporting, not billing
 
         const endTime = new Date().getTime();
-        const timeTakenInSeconds = (endTime - startTime) / 1000;
+        const timeTakenInSeconds = (endTime - middlewareStartTime) / 1000;
 
         logger.info("Logging job (async scraping)", {
           num_docs: credits_billed,
@@ -504,6 +511,21 @@ export async function searchController(
           false,
           isSearchPreview,
         );
+
+        // Log final timing information for async mode
+        const totalRequestTime = new Date().getTime() - middlewareStartTime;
+        const controllerTime = new Date().getTime() - controllerStartTime;
+        logger.info("Search completed successfully (async)", {
+          version: "v2",
+          jobId,
+          middlewareStartTime,
+          controllerStartTime,
+          middlewareTime,
+          controllerTime,
+          totalRequestTime,
+          creditsUsed: credits_billed,
+          scrapeful: shouldScrape,
+        });
 
         return res.status(200).json({
           success: true,
@@ -612,7 +634,7 @@ export async function searchController(
     }
 
     const endTime = new Date().getTime();
-    const timeTakenInSeconds = (endTime - startTime) / 1000;
+    const timeTakenInSeconds = (endTime - middlewareStartTime) / 1000;
 
     logger.info("Logging job", {
       num_docs: credits_billed,
@@ -648,6 +670,23 @@ export async function searchController(
       isSearchPreview,
     );
 
+    // Log final timing information
+    const totalRequestTime = new Date().getTime() - middlewareStartTime;
+    const controllerTime = new Date().getTime() - controllerStartTime;
+
+    logger.info("Request metrics", {
+      version: "v2",
+      jobId,
+      mode: "search",
+      middlewareStartTime,
+      controllerStartTime,
+      middlewareTime,
+      controllerTime,
+      totalRequestTime,
+      creditsUsed: credits_billed,
+      scrapeful: shouldScrape,
+    });
+
     // For sync scraping or no scraping, don't include scrapeIds
     return res.status(200).json({
       success: true,
@@ -673,7 +712,10 @@ export async function searchController(
     }
 
     Sentry.captureException(error);
-    logger.error("Unhandled error occurred in search", { error });
+    logger.error("Unhandled error occurred in search", {
+      version: "v2",
+      error,
+    });
     return res.status(500).json({
       success: false,
       error: error.message,
