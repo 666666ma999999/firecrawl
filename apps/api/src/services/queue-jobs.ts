@@ -86,7 +86,11 @@ export async function _addScrapeJobToBullMQ(
     }
   }
 
-  return await scrapeQueue.addJob(jobId, webScraperOptions, priority, listenable);
+  return await scrapeQueue.addJob(jobId, webScraperOptions, {
+    priority,
+    listenable,
+    ownerId: webScraperOptions.team_id,
+  });
 }
 
 async function addScrapeJobRaw(
@@ -181,10 +185,20 @@ async function addScrapeJobRaw(
 
     webScraperOptions.concurrencyLimited = true;
 
-    await _addScrapeJobToConcurrencyQueue(webScraperOptions, jobId, priority, listenable);
+    await _addScrapeJobToConcurrencyQueue(
+      webScraperOptions,
+      jobId,
+      priority,
+      listenable,
+    );
     return null;
   } else {
-    return await _addScrapeJobToBullMQ(webScraperOptions, jobId, priority, listenable);
+    return await _addScrapeJobToBullMQ(
+      webScraperOptions,
+      jobId,
+      priority,
+      listenable,
+    );
   }
 }
 
