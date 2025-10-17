@@ -539,19 +539,27 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
         },
         false,
         job.data.internalOptions?.bypassBilling ?? false,
-      ).catch(e => {
-        logger.error("Failed to save log for job", { error: e, jobId: job.id });
-      });
+      );
 
       if (
         !process.env.NUQ_RABBITMQ_URL ||
         blobSize > NUQ_MAX_RABBIT_BLOB_SIZE
       ) {
         await logPromise;
-        logger.debug("Job blob too large for RabbitMQ, not forwarding", {
-          blobSize,
-        });
+
+        if (process.env.NUQ_RABBITMQ_URL) {
+          logger.debug("Job blob too large for RabbitMQ, not forwarding", {
+            blobSize,
+          });
+        }
       } else {
+        logPromise.catch(e => {
+          logger.error("Failed to save log for RabbitMQ forwarded job", {
+            error: e,
+            jobId: job.id,
+          });
+        });
+
         data.forwardRabbit = true;
         logger.debug("Forwarding job result to RabbitMQ", { blobSize });
       }

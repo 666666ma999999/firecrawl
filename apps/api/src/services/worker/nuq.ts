@@ -32,7 +32,7 @@ export type NuQJob<Data = any, ReturnValue = any> = {
   ownerId?: string;
 };
 
-// 2MB max document size for rabbit - can tweak, but keep it relatively low
+// 2MiB max document size for rabbit - can tweak, but keep it relatively low
 export const NUQ_MAX_RABBIT_BLOB_SIZE = 1024 * 1024 * 2;
 
 const listenChannelId = process.env.NUQ_POD_NAME ?? "main";
@@ -680,7 +680,11 @@ class NuQ<JobData = any, JobReturnValue = any> {
 
               // should we just return here or also double-check the DB?
               // listener should only return to our consumer i believe?
-              if (result && status === "completed") {
+              if (
+                result !== undefined &&
+                result !== null &&
+                status === "completed"
+              ) {
                 resolve(result);
                 return;
               }
@@ -688,12 +692,13 @@ class NuQ<JobData = any, JobReturnValue = any> {
               const job = await this.getJob(id, _logger);
               if (!job) {
                 reject(new Error("Job raced out while waiting for it"));
+                return;
+              }
+
+              if (job.status === "completed") {
+                resolve(job.returnvalue ?? result ?? null);
               } else {
-                if (job.status === "completed") {
-                  resolve(job.returnvalue || result || null);
-                } else {
-                  reject(new Error(job.failedReason!));
-                }
+                reject(new Error(job.failedReason!));
               }
             };
 
