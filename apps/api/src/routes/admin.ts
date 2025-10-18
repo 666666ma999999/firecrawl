@@ -12,6 +12,7 @@ import {
 } from "../controllers/v0/admin/metrics";
 import { crawlCheckController } from "../controllers/v0/admin/crawl-check";
 import { realtimeSearchController } from "../controllers/v2/f-search";
+import { migrateConcurrencyQueue } from "../controllers/v0/admin/concurrency-queue-migration";
 
 export const adminRouter = express.Router();
 
@@ -63,4 +64,9 @@ adminRouter.get(
 adminRouter.post(
   `/admin/${process.env.BULL_AUTH_KEY}/fsearch`,
   wrap(realtimeSearchController),
+);
+
+adminRouter.get(
+  `/admin/${process.env.BULL_AUTH_KEY}/migrate-concurrency-queue`,
+  wrap(migrateConcurrencyQueue),
 );
