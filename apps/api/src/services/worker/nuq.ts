@@ -757,6 +757,7 @@ class NuQ<JobData = any, JobReturnValue = any> {
                 )
                 SELECT * FROM ins
               `,
+              [id],
             )
           ).rows[0],
         );
@@ -770,6 +771,15 @@ class NuQ<JobData = any, JobReturnValue = any> {
 
         return result;
       } finally {
+        const duration = Date.now() - start;
+        setSpanAttributes(span, {
+          "nuq.duration_ms": duration,
+        });
+        logger.info("nuqPromoteJobFromBacklogOrAdd metrics", {
+          module: "nuq/metrics",
+          method: "nuqPromoteJobFromBacklogOrAdd",
+          duration,
+        });
       }
     });
   }
