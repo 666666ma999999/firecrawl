@@ -238,14 +238,16 @@ export async function crawlStatusController(
     logger.child({ zeroDataRetention }),
   );
 
-  const scrapeIds = doneJobs.map(x => x.id) ?? [];
   let scrapes: Document[] = [];
   let iteratedOver = 0;
   let bytes = 0;
   const bytesLimit = 10485760; // 10 MiB in bytes
 
   const scrapeBlobs = await Promise.all(
-    scrapeIds.map(async x => [x, (await getJobFromGCS(x))?.[0]] as const),
+    doneJobs.map(
+      async x =>
+        [x.id, x.returnvalue ?? (await getJobFromGCS(x.id))?.[0]] as const,
+    ),
   );
 
   for (const [id, scrape] of scrapeBlobs) {
