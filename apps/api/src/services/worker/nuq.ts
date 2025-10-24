@@ -1251,7 +1251,25 @@ class NuQ<JobData = any, JobReturnValue = any> {
       duration: Date.now() - start,
     });
     const prometheusQueueName = this.queueName.replace(".", "_");
-    return `# HELP ${prometheusQueueName}_job_count Number of jobs in each status\n# TYPE ${prometheusQueueName}_job_count gauge\n${result.rows.map(x => `${prometheusQueueName}_job_count{status="${x.status}"} ${x.count}`).join("\n")}\n`;
+
+    const statusCounts = new Map<NuQJobStatus, number>([
+      ["queued", 0],
+      ["active", 0],
+      ["completed", 0],
+      ["failed", 0],
+      ["backlog", 0],
+    ]);
+
+    result.rows.forEach(x => statusCounts.set(x.status, parseInt(x.count, 10)));
+
+    return `# HELP ${prometheusQueueName}_job_count Number of jobs in each status\n# TYPE ${prometheusQueueName}_job_count gauge\n${Array.from(
+      statusCounts.entries(),
+    )
+      .map(
+        ([status, count]) =>
+          `${prometheusQueueName}_job_count{status="${status}"} ${count}`,
+      )
+      .join("\n")}\n`;
   }
 
   // === Cleanup
