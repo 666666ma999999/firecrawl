@@ -1,4 +1,5 @@
 export interface BrandingProfile {
+  color_scheme?: "light" | "dark";
   logo?: string | null;
   fonts?: Array<{
     family: string;
@@ -113,6 +114,33 @@ export interface BrandingProfile {
     voice?: string;
     emoji_usage?: string;
     [key: string]: string | undefined;
+  };
+  // LLM-enhanced fields
+  personality?: {
+    tone:
+      | "professional"
+      | "playful"
+      | "modern"
+      | "traditional"
+      | "minimalist"
+      | "bold";
+    energy: "low" | "medium" | "high";
+    target_audience: string;
+  };
+  design_system?: {
+    framework:
+      | "tailwind"
+      | "bootstrap"
+      | "material"
+      | "chakra"
+      | "custom"
+      | "unknown";
+    component_library?: string;
+  };
+  confidence?: {
+    buttons: number;
+    colors: number;
+    overall: number;
   };
   [key: string]: unknown;
 }

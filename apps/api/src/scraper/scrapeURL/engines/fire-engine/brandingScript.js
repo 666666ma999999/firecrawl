@@ -221,7 +221,16 @@
 
     // Handle rgba() format
     if (color.startsWith("rgba(") || color.startsWith("rgb(")) {
-      return true; // Accept all rgba/rgb colors (including with alpha)
+      // Reject fully transparent colors (alpha = 0)
+      const match = color.match(/rgba?\([^,]+,[^,]+,[^,]+(?:,\s*([0-9.]+))?\)/);
+      if (match && match[1] !== undefined) {
+        const alpha = parseFloat(match[1]);
+        if (alpha === 0 || alpha < 0.01) return false; // Transparent
+      }
+      // Also check if it's literally transparent
+      if (color.includes("0, 0, 0, 0") || color.includes("0,0,0,0"))
+        return false;
+      return true; // Accept all other rgba/rgb colors
     }
 
     // Handle hex colors
@@ -334,7 +343,13 @@
         picks.push(el);
     };
     pushQ('header img, .site-logo img, img[alt*=logo i], img[src*="logo"]', 5);
-    pushQ('button, [role=button], a.button, a.btn, [class*="btn"]', 30);
+    // Increase button limit and add selectors for links styled as buttons
+    // Include: buttons, role=button, a.button, a.btn, anything with "btn" in class,
+    // and links with common button-like classes (bg-brand, bg-primary, bg-accent, etc.)
+    pushQ(
+      'button, [role=button], a.button, a.btn, [class*="btn"], a[class*="bg-brand"], a[class*="bg-primary"], a[class*="bg-accent"], a[class*="-button"]',
+      50,
+    );
     pushQ('input, select, textarea, [class*="form-control"]', 25);
     pushQ("h1, h2, h3, p, a", 50);
     return dedupe(picks);
@@ -347,6 +362,7 @@
     const colorRaw = cs.getPropertyValue("color");
     const bgRaw = cs.getPropertyValue("background-color");
     const bcRaw = cs.getPropertyValue("border-top-color");
+    const borderWidth = toPx(cs.getPropertyValue("border-top-width"));
 
     const color = hexify(colorRaw);
     const bg = hexify(bgRaw);
@@ -361,17 +377,47 @@
     const ff = ffRaw ? cleanNextJsFontName(ffRaw) || ffRaw : null;
     const fs = cs.getPropertyValue("font-size");
 
-    const classNames = el.className ? String(el.className).toLowerCase() : "";
+    // Get class names - ALWAYS use getAttribute as it's most reliable
+    let classNames = "";
+    try {
+      // Try getAttribute first (most reliable)
+      if (el.getAttribute) {
+        const attrClass = el.getAttribute("class");
+        if (attrClass) {
+          classNames = attrClass.toLowerCase();
+        }
+      }
+
+      // Only fallback to className property if getAttribute failed
+      if (!classNames && el.className) {
+        if (typeof el.className === "string") {
+          classNames = el.className.toLowerCase();
+        } else if (el.className.baseVal) {
+          // SVG elements have className.baseVal
+          classNames = el.className.baseVal.toLowerCase();
+        }
+      }
+    } catch (e) {
+      // Last resort fallback
+      try {
+        if (el.className && typeof el.className === "string") {
+          classNames = el.className.toLowerCase();
+        }
+      } catch (e2) {
+        classNames = "";
+      }
+    }
 
     return {
       tag: el.tagName.toLowerCase(),
       classNames,
+      text: (el.textContent && el.textContent.trim().substring(0, 100)) || "", // Add text content
       rect: { w: rect.width, h: rect.height },
-      colors: { text: color, background: bg, border: bc },
+      colors: { text: color, background: bg, border: bc, borderWidth },
       typography: { family: ff, size: fs || null, weight: fw },
       radius,
       isButton: el.matches(
-        'button,[role=button],a.button,a.btn,[class*="btn"]',
+        'button,[role=button],a.button,a.btn,[class*="btn"],a[class*="bg-brand"],a[class*="bg-primary"],a[class*="bg-accent"],a[class*="-button"]',
       ),
       isInput: el.matches('input,select,textarea,[class*="form-control"]'),
       isLink: el.matches("a"),
@@ -563,164 +609,13 @@
     return Math.round(med) + "px";
   };
 
-  const buildComponents = (snapshots, palette) => {
-    // Get all buttons
-    const allButtons = snapshots.filter(s => s.isButton);
-
-    // Try to find primary button (by class name pattern)
-    const primaryButtonByClass = allButtons.find(
-      s =>
-        s.classNames &&
-        (s.classNames.includes("primary") ||
-          s.classNames.includes("cta") ||
-          s.classNames.includes("button-primary")),
-    );
-
-    // Try to find secondary button (by class name pattern)
-    const secondaryButtonByClass = allButtons.find(s => {
-      if (!s.classNames) return false;
-
-      // classNames is already lowercase from getStyleSnapshot
-      const classes = s.classNames.split(/\s+/);
-
-      // Check for exact secondary class patterns (more strict)
-      const hasExactSecondaryClass = classes.some(
-        cls =>
-          cls === "secondary" ||
-          cls === "button-secondary" ||
-          cls === "btn-secondary" ||
-          cls === "outline" ||
-          cls === "ghost" ||
-          // Only match if it ends with or starts with secondary (not tertiary, etc)
-          (cls.includes("secondary") && !cls.includes("tertiary")),
-      );
-
-      // Check for button + secondary combination
-      const hasButton = classes.some(cls => cls === "button" || cls === "btn");
-      const hasSecondary = classes.some(cls => cls === "secondary");
-      const hasButtonAndSecondary = hasButton && hasSecondary;
-
-      return hasExactSecondaryClass || hasButtonAndSecondary;
-    });
-
-    // Get buttons with valid colored backgrounds
-    const buttonsWithColor = allButtons.filter(
-      s => s.colors.background && isColorValid(s.colors.background),
-    );
-
-    // Sort by size (larger = more prominent)
-    buttonsWithColor.sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h);
-
-    // Pick primary: explicit primary class > largest colored button > any button
-    const primaryBtn =
-      primaryButtonByClass &&
-      primaryButtonByClass.colors.background &&
-      isColorValid(primaryButtonByClass.colors.background)
-        ? primaryButtonByClass
-        : buttonsWithColor[0] || primaryButtonByClass || allButtons[0];
-
-    // Pick secondary: find most common button style that's different from primary
-    let secondaryBtn = secondaryButtonByClass;
-
-    if (!secondaryBtn) {
-      // Get all buttons that are NOT the primary button
-      const nonPrimaryButtons = allButtons.filter(b => b !== primaryBtn);
-
-      if (nonPrimaryButtons.length > 0) {
-        // Group buttons by their style signature (bg + border + text)
-        const styleGroups = {};
-
-        for (const btn of nonPrimaryButtons) {
-          // Create a style signature
-          const signature = `${btn.colors.background || "transparent"}|${btn.colors.border || "none"}|${btn.colors.text || "inherit"}`;
-
-          // Skip if this matches primary style (unlikely but check)
-          const primarySignature = `${primaryBtn?.colors.background || "transparent"}|${primaryBtn?.colors.border || "none"}|${primaryBtn?.colors.text || "inherit"}`;
-          if (signature === primarySignature) continue;
-
-          if (!styleGroups[signature]) {
-            styleGroups[signature] = { buttons: [], count: 0 };
-          }
-          styleGroups[signature].buttons.push(btn);
-          styleGroups[signature].count++;
-        }
-
-        // Filter to only groups with at least 2 buttons (or 3+ for more confidence)
-        const MIN_COUNT = 2;
-        const validGroups = Object.entries(styleGroups)
-          .filter(([_, group]) => group.count >= MIN_COUNT)
-          .sort((a, b) => b[1].count - a[1].count); // Sort by count descending
-
-        // Use the most common valid group
-        if (validGroups.length > 0) {
-          secondaryBtn = validGroups[0][1].buttons[0];
-        } else {
-          // Fallback: if no style appears 2+ times, find any button that's visually distinct
-          // (different background OR has a border when primary doesn't)
-          const distinctBtn = nonPrimaryButtons.find(b => {
-            const hasDifferentBg =
-              b.colors.background !== primaryBtn?.colors.background;
-            const hasBorder =
-              b.colors.border &&
-              isColorValid(b.colors.border) &&
-              b.colors.border !== "rgba(0, 0, 0, 0)";
-            const primaryHasBorder =
-              primaryBtn?.colors.border &&
-              isColorValid(primaryBtn.colors.border);
-
-            return hasDifferentBg || (hasBorder && !primaryHasBorder);
-          });
-
-          secondaryBtn = distinctBtn || null;
-        }
-      }
-    }
-
-    const primaryBg =
-      primaryBtn?.colors.background &&
-      isColorValid(primaryBtn.colors.background)
-        ? primaryBtn.colors.background
-        : palette.primary;
-    const primaryText =
-      primaryBtn?.colors.text ||
-      (contrastYIQ(primaryBg) < 128 ? "#FFFFFF" : "#111111");
-    const primaryRadius =
-      primaryBtn?.radius && primaryBtn.radius > 0
-        ? Math.round(primaryBtn.radius) + "px"
-        : pickBorderRadius(snapshots);
-
-    const secondaryBg =
-      secondaryBtn?.colors.background &&
-      isColorValid(secondaryBtn.colors.background)
-        ? secondaryBtn.colors.background
-        : "transparent";
-    const secondaryBorder =
-      secondaryBtn?.colors.border && isColorValid(secondaryBtn.colors.border)
-        ? secondaryBtn.colors.border
-        : palette.primary;
-    const secondaryText = secondaryBtn?.colors.text || palette.primary;
-    const secondaryRadius =
-      secondaryBtn?.radius && secondaryBtn.radius > 0
-        ? Math.round(secondaryBtn.radius) + "px"
-        : primaryRadius;
-
+  const buildComponents = snapshots => {
+    // Simplified: Just collect basic component styles
+    // LLM handles button classification
     const input = snapshots.find(s => s.isInput);
     const medianRadius = pickBorderRadius(snapshots);
 
     return {
-      button_primary: {
-        background: primaryBg,
-        text_color: primaryText,
-        border_radius: primaryRadius,
-      },
-      button_secondary: secondaryBtn
-        ? {
-            background: secondaryBg,
-            text_color: secondaryText,
-            border_color: secondaryBorder,
-            border_radius: secondaryRadius,
-          }
-        : null,
       input: {
         border_color: input?.colors.border || "#CCCCCC",
         border_radius: medianRadius,
@@ -818,13 +713,93 @@
   const nodes = sampleElements();
   const snaps = nodes.map(getStyleSnapshot);
 
+  const detectColorScheme = () => {
+    // Helper to calculate luminance from rgb/rgba string
+    const getLuminance = colorStr => {
+      if (
+        !colorStr ||
+        colorStr === "transparent" ||
+        colorStr === "rgba(0, 0, 0, 0)"
+      )
+        return null;
+
+      // Parse rgba or rgb
+      const match = colorStr.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+      if (!match) return null;
+
+      const [r, g, b] = match.slice(1, 4).map(n => parseInt(n, 10));
+      // Calculate relative luminance
+      const [rs, gs, bs] = [r, g, b].map(c => {
+        c = c / 255;
+        return c <= 0.03928 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      });
+      return 0.2126 * rs + 0.7152 * gs + 0.0722 * bs;
+    };
+
+    const body = document.body;
+    const html = document.documentElement;
+
+    // Check explicit dark mode indicators first (most reliable)
+    const hasDarkClass =
+      html.classList.contains("dark") ||
+      body.classList.contains("dark") ||
+      html.classList.contains("dark-mode") ||
+      body.classList.contains("dark-mode") ||
+      html.classList.contains("theme-dark");
+    const hasDarkAttr =
+      html.getAttribute("data-theme") === "dark" ||
+      body.getAttribute("data-theme") === "dark" ||
+      html.getAttribute("data-bs-theme") === "dark"; // Bootstrap
+
+    if (hasDarkClass || hasDarkAttr) {
+      return "dark";
+    }
+
+    // Check body/html backgrounds
+    const bodyBg = getComputedStyle(body).backgroundColor;
+    const htmlBg = getComputedStyle(html).backgroundColor;
+    let bodyLum = getLuminance(bodyBg);
+    let htmlLum = getLuminance(htmlBg);
+
+    // If body/html are transparent, check main content containers
+    if (bodyLum === null && htmlLum === null) {
+      const mainContainers = [
+        document.querySelector("main"),
+        document.querySelector('[role="main"]'),
+        document.querySelector("#root"),
+        document.querySelector("#__next"),
+        document.querySelector(".app"),
+        document.querySelector(".main"),
+        document.body.firstElementChild,
+      ].filter(Boolean);
+
+      for (const container of mainContainers) {
+        const bg = getComputedStyle(container).backgroundColor;
+        const lum = getLuminance(bg);
+        if (lum !== null) {
+          bodyLum = lum;
+          break;
+        }
+      }
+    }
+
+    const luminance = bodyLum ?? htmlLum ?? 1; // Default to light if can't determine
+
+    // Luminance < 0.5 means dark background (closer to black)
+    // For better accuracy, use 0.4 as threshold (accounts for slightly off-black backgrounds)
+    const isDarkByColor = luminance < 0.4;
+
+    return isDarkByColor ? "dark" : "light";
+  };
+
   const palette = inferPalette(snaps, cssData.colors);
   const typography = inferTypography();
   const baseUnit = inferBaseUnit(cssData.spacings);
   const borderRadius = pickBorderRadius(snaps);
   const images = findImages();
   const fontsList = inferFontsList(cssData.fontFaces, cssData.fonts);
-  const components = buildComponents(snaps, palette);
+  const components = buildComponents(snaps);
+  const colorScheme = detectColorScheme();
 
   const imagesOut = {
     logo: pickLogo(images),
@@ -835,7 +810,27 @@
       null,
   };
 
+  // Extract button snapshots for LLM
+  const buttonSnapshots = snaps
+    .filter(s => s.isButton)
+    .slice(0, 20) // Send top 20 buttons to LLM
+    .map((s, idx) => ({
+      index: idx,
+      text: s.text || "",
+      html: "", // Will be filled from rawHtml in transformer
+      classes: s.classNames || "",
+      background: s.colors?.background || "transparent",
+      textColor: s.colors?.text || "#000000",
+      // Only include border if there's an actual border width
+      borderColor:
+        s.colors?.borderWidth && s.colors.borderWidth > 0
+          ? s.colors.border
+          : null,
+      borderRadius: s.radius || "0px",
+    }));
+
   const result = {
+    color_scheme: colorScheme,
     fonts: fontsList,
     colors: palette,
     typography,
@@ -845,6 +840,7 @@
     },
     components,
     images: imagesOut,
+    __button_snapshots: buttonSnapshots, // For LLM analysis
   };
 
   // Clean null/undefined/empty values

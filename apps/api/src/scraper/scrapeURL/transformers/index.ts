@@ -20,6 +20,11 @@ import {
   hasAnyFormatOfTypes,
 } from "../../../lib/format-utils";
 import { BrandingProfile } from "../../../types/branding";
+import {
+  enhanceBrandingWithLLM,
+  mergeBrandingResults,
+  ButtonSnapshot,
+} from "../../../lib/branding-llm";
 
 type Transformer = (
   meta: Meta,
@@ -162,7 +167,10 @@ async function deriveImagesFromHTML(
   return document;
 }
 
-function deriveBrandingFromActions(meta: Meta, document: Document): Document {
+async function deriveBrandingFromActions(
+  meta: Meta,
+  document: Document,
+): Promise<Document> {
   const hasBranding = hasFormatOfType(meta.options.formats, "branding");
 
   if (!hasBranding) {
@@ -190,19 +198,94 @@ function deriveBrandingFromActions(meta: Meta, document: Document): Document {
   // remove the branding return from the actions javascript returns
   document.actions!.javascriptReturns!.splice(brandingReturnIndex, 1);
 
+  let jsBranding: BrandingProfile | undefined;
+
   if (typeof value === "string") {
     try {
-      document.branding = JSON.parse(value) as BrandingProfile;
+      jsBranding = JSON.parse(value) as BrandingProfile;
     } catch (error) {
       meta.logger.warn("Failed to parse branding javascript return", {
         error,
       });
     }
   } else if (value && typeof value === "object") {
-    document.branding = value as BrandingProfile;
+    jsBranding = value as BrandingProfile;
   }
 
-  console.log("🔥 document.branding", document.branding);
+  if (!jsBranding) {
+    return document;
+  }
+
+  console.log("🔥 JS branding analysis", jsBranding);
+
+  // Enhance with LLM
+  try {
+    meta.logger.info("Enhancing branding with LLM...");
+
+    // Extract button snapshots from JS analysis
+    const buttonSnapshots: ButtonSnapshot[] =
+      (jsBranding as any).__button_snapshots || [];
+
+    // Enrich with HTML if available
+    if (document.rawHtml && buttonSnapshots.length > 0) {
+      // Extract button HTML snippets
+      const buttonMatches =
+        document.rawHtml.match(/<button[^>]*>[\s\S]*?<\/button>/gi) || [];
+      const anchorMatches =
+        document.rawHtml.match(
+          /<a[^>]*class="[^"]*btn[^"]*"[^>]*>[\s\S]*?<\/a>/gi,
+        ) || [];
+      const allButtonHtml = [...buttonMatches, ...anchorMatches].slice(0, 20);
+
+      // Try to match HTML to snapshots by text content
+      buttonSnapshots.forEach((snap, idx) => {
+        if (idx < allButtonHtml.length) {
+          snap.html = allButtonHtml[idx].substring(0, 500); // Limit HTML length
+        }
+      });
+    }
+
+    meta.logger.info(
+      `Sending ${buttonSnapshots.length} buttons to LLM for classification`,
+    );
+
+    const llmEnhancement = await enhanceBrandingWithLLM({
+      js_analysis: jsBranding,
+      buttons: buttonSnapshots,
+      screenshot: document.screenshot, // Use screenshot if available
+      url: document.url || meta.url,
+    });
+
+    meta.logger.info("LLM enhancement complete", {
+      primary_btn_index:
+        llmEnhancement.button_classification.primary_button_index,
+      secondary_btn_index:
+        llmEnhancement.button_classification.secondary_button_index,
+      button_confidence: llmEnhancement.button_classification.confidence,
+      color_confidence: llmEnhancement.color_roles.confidence,
+    });
+
+    // Merge JS and LLM results, using LLM's button selection
+    document.branding = mergeBrandingResults(
+      jsBranding,
+      llmEnhancement,
+      buttonSnapshots,
+    );
+
+    // Clean up internal data
+    delete (document.branding as any).__button_snapshots;
+  } catch (error) {
+    meta.logger.error(
+      "LLM branding enhancement failed, using JS analysis only",
+      { error },
+    );
+    // Fallback to JS-only analysis
+    document.branding = jsBranding;
+    // Clean up internal data
+    delete (document.branding as any).__button_snapshots;
+  }
+
+  console.log("🔥 Final branding (JS + LLM)", document.branding);
 
   return document;
 }

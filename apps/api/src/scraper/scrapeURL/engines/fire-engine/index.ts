@@ -38,12 +38,10 @@ import { BrandingProfile } from "../../../../types/branding";
 import { readFileSync } from "fs";
 import { join } from "path";
 
-export const loadBrandingScript = () =>
+const loadBrandingScript = () =>
   readFileSync(join(__dirname, "brandingScript.js"), "utf-8");
 
-export const brandingScript = loadBrandingScript();
-
-console.log("🔥 brandingScript", brandingScript);
+const brandingScript = loadBrandingScript();
 
 // This function does not take `Meta` on purpose. It may not access any
 // meta values to construct the request -- that must be done by the
