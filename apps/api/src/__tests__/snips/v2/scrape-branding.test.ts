@@ -161,31 +161,6 @@ describeIf(ALLOW_TEST_SUITE_WEBSITE)("Branding extraction", () => {
       },
       scrapeTimeout,
     );
-
-    concurrentIf(TEST_PRODUCTION || HAS_AI)(
-      "captures hover states when available",
-      async () => {
-        const response = await scrape(
-          {
-            url: "https://firecrawl.dev",
-            formats: ["branding"],
-          },
-          identity,
-        );
-
-        // Hover states might not always be present, but if they are, they should be valid
-        const primaryBtn = response.branding?.components?.button_primary;
-        if (primaryBtn?.hover_background) {
-          // Should be a valid color format
-          expect(
-            primaryBtn.hover_background.startsWith("#") ||
-              primaryBtn.hover_background.startsWith("rgb") ||
-              primaryBtn.hover_background.includes("var("),
-          ).toBe(true);
-        }
-      },
-      scrapeTimeout,
-    );
   });
 
   describe("Image extraction", () => {

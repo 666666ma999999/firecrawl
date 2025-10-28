@@ -67,9 +67,6 @@ export interface BrandingProfile {
       text_color?: string;
       border_color?: string;
       border_radius?: string;
-      hover_background?: string;
-      hover_text_color?: string;
-      hover_border_color?: string;
       [key: string]: string | undefined;
     };
     button_secondary?: {
@@ -77,9 +74,6 @@ export interface BrandingProfile {
       text_color?: string;
       border_color?: string;
       border_radius?: string;
-      hover_background?: string;
-      hover_text_color?: string;
-      hover_border_color?: string;
       [key: string]: string | undefined;
     };
     input?: {

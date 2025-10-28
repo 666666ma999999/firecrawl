@@ -108,9 +108,6 @@ export interface ButtonSnapshot {
   textColor: string;
   borderColor?: string | null;
   borderRadius?: string;
-  hoverBackground?: string | null;
-  hoverTextColor?: string | null;
-  hoverBorderColor?: string | null;
 }
 
 interface BrandingLLMInput {
@@ -383,9 +380,6 @@ export function mergeBrandingResults(
         text_color: primaryBtn.textColor,
         border_color: primaryBtn.borderColor || undefined,
         border_radius: primaryBtn.borderRadius || "0px",
-        hover_background: primaryBtn.hoverBackground || undefined,
-        hover_text_color: primaryBtn.hoverTextColor || undefined,
-        hover_border_color: primaryBtn.hoverBorderColor || undefined,
       };
     }
 
@@ -397,9 +391,6 @@ export function mergeBrandingResults(
         text_color: secondaryBtn.textColor,
         border_color: secondaryBtn.borderColor || undefined,
         border_radius: secondaryBtn.borderRadius || "0px",
-        hover_background: secondaryBtn.hoverBackground || undefined,
-        hover_text_color: secondaryBtn.hoverTextColor || undefined,
-        hover_border_color: secondaryBtn.hoverBorderColor || undefined,
       };
     }
 
