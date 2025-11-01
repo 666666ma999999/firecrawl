@@ -273,27 +273,30 @@ async function deriveBrandingFromActions(
       color_confidence: llmEnhancement.colorRoles.confidence,
     });
 
-    // Merge JS and LLM results, using LLM's button selection
     document.branding = mergeBrandingResults(
       jsBranding,
       llmEnhancement,
       buttonSnapshots,
     );
 
-    // Clean up internal data (keep for processing, hide from API response)
-    delete (document.branding as any).__button_snapshots;
+    const DEBUG = process.env.DEBUG_BRANDING === "true";
+
+    if (DEBUG) {
+      (document.branding as any).__button_snapshots = buttonSnapshots;
+    }
+
     delete (document.branding as any).__framework_hints;
-    delete (document.branding as any).__llm_button_reasoning;
     delete (document.branding as any).confidence;
+
+    if (!DEBUG) {
+      delete (document.branding as any).__llm_button_reasoning;
+    }
   } catch (error) {
     meta.logger.error(
       "LLM branding enhancement failed, using JS analysis only",
       { error },
     );
-    // Fallback to JS-only analysis
     document.branding = jsBranding;
-    // Clean up internal data (keep for processing, hide from API response)
-    delete (document.branding as any).__button_snapshots;
     delete (document.branding as any).__framework_hints;
   }
 

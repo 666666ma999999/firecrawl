@@ -180,14 +180,50 @@ export const brandingScript = `
       }
     }
 
+    let bgColor = cs.getPropertyValue("background-color");
+    const textColor = cs.getPropertyValue("color");
+    const isButton = el.matches('button,[role=button],a.button,a.btn,[class*="btn"],a[class*="bg-brand"],a[class*="bg-primary"],a[class*="bg-accent"],a[class*="-button"]');
+    
+    // For buttons, if background is transparent/very transparent, check parent backgrounds
+    if (isButton && bgColor) {
+      let isTransparent = bgColor === "transparent" || bgColor === "rgba(0, 0, 0, 0)";
+      let hasLowAlpha = false;
+      
+      // Check if alpha is very low (< 0.1)
+      const alphaMatch = bgColor.match(/(?:rgba?\\([^,]*,[^,]*,[^,]*,\\s*|color\\([^/]*\\/\\s*)([\\d.]+)\\)?$/);
+      if (alphaMatch) {
+        const alpha = parseFloat(alphaMatch[1]);
+        hasLowAlpha = alpha < 0.1;
+      }
+      
+      if (isTransparent || hasLowAlpha) {
+        // Walk up parent chain to find a non-transparent background
+        let parent = el.parentElement;
+        let depth = 0;
+        while (parent && depth < 5) {
+          const parentBg = getComputedStyle(parent).getPropertyValue("background-color");
+          if (parentBg && parentBg !== "transparent" && parentBg !== "rgba(0, 0, 0, 0)") {
+            const parentAlphaMatch = parentBg.match(/(?:rgba?\\([^,]*,[^,]*,[^,]*,\\s*|color\\([^/]*\\/\\s*)([\\d.]+)\\)?$/);
+            const parentAlpha = parentAlphaMatch ? parseFloat(parentAlphaMatch[1]) : 1;
+            if (parentAlpha >= 0.1) {
+              bgColor = parentBg;
+              break;
+            }
+          }
+          parent = parent.parentElement;
+          depth++;
+        }
+      }
+    }
+    
     return {
       tag: el.tagName.toLowerCase(),
       classes: classNames,
       text: (el.textContent && el.textContent.trim().substring(0, 100)) || "",
       rect: { w: rect.width, h: rect.height },
       colors: {
-        text: cs.getPropertyValue("color"),
-        background: cs.getPropertyValue("background-color"),
+        text: textColor,
+        background: bgColor,
         border: cs.getPropertyValue("border-top-color"),
         borderWidth: toPx(cs.getPropertyValue("border-top-width")),
       },
@@ -197,7 +233,7 @@ export const brandingScript = `
         weight: parseInt(cs.getPropertyValue("font-weight"), 10) || null,
       },
       radius: toPx(cs.getPropertyValue("border-radius")),
-      isButton: el.matches('button,[role=button],a.button,a.btn,[class*="btn"],a[class*="bg-brand"],a[class*="bg-primary"],a[class*="bg-accent"],a[class*="-button"]'),
+      isButton: isButton,
       isInput: el.matches('input,select,textarea,[class*="form-control"]'),
       isLink: el.matches("a"),
     };
@@ -358,6 +394,19 @@ export const brandingScript = `
   const frameworkHints = detectFrameworkHints();
   const colorScheme = detectColorScheme();
 
+  // Debug info for button colors
+  const buttonDebug = snapshots
+    .filter(s => s.isButton)
+    .slice(0, 10)
+    .map((s, idx) => ({
+      index: idx,
+      text: (s.text || "").substring(0, 50),
+      bgColor: s.colors.background,
+      textColor: s.colors.text,
+      classes: s.classes,
+      rect: s.rect,
+    }));
+
   // Return raw data - Node.js will process it
   return {
     raw: {
@@ -367,6 +416,9 @@ export const brandingScript = `
       typography,
       frameworkHints,
       colorScheme,
+      debug: {
+        buttonColors: buttonDebug,
+      },
     }
   };
 })();

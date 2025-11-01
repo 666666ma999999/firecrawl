@@ -296,6 +296,25 @@ function buildBrandingPrompt(input: BrandingLLMInput): string {
   // Add button context with detailed info
   if (buttons && buttons.length > 0) {
     prompt += `## Detected Buttons (${buttons.length} total):\n`;
+
+    // First, show a color summary to help LLM see distinct options
+    const colorSummary = new Map<string, number[]>();
+    buttons.forEach((btn, idx) => {
+      const bg = btn.background || "transparent";
+      if (!colorSummary.has(bg)) {
+        colorSummary.set(bg, []);
+      }
+      colorSummary.get(bg)!.push(idx);
+    });
+
+    prompt += `\n**COLOR GROUPS** (buttons sharing the same background color):\n`;
+    colorSummary.forEach((indices, color) => {
+      const count = indices.length;
+      const colorInfo = getColorInfo(color);
+      prompt += `- ${color} (${colorInfo.description}${colorInfo.isVibrant ? " - VIBRANT" : ""}) → Buttons ${indices.join(", ")} (${count} button${count > 1 ? "s" : ""})\n`;
+    });
+    prompt += `\n⚠️ **CRITICAL**: Primary and secondary MUST be from DIFFERENT color groups!\n\n`;
+
     prompt += `Analyze these buttons and identify which is the PRIMARY CTA and which is SECONDARY:\n\n`;
 
     buttons.forEach((btn, idx) => {
@@ -327,9 +346,18 @@ function buildBrandingPrompt(input: BrandingLLMInput): string {
   prompt += `   - Return the button INDEX (not text) and explain your reasoning\n\n`;
 
   prompt += `2. **SECONDARY Button**: Identify which button is secondary (outline, ghost, or less prominent).\n`;
+  prompt += `   - **CRITICAL**: MUST have a DIFFERENT background color than the primary button you selected\n`;
+  prompt += `   - **EXAMPLES OF VALID COMBINATIONS**:\n`;
+  prompt += `     * Primary: #00C853 (green, vibrant) → Secondary: transparent (outline style) ✓\n`;
+  prompt += `     * Primary: #1976D2 (blue, vibrant) → Secondary: #FFFFFF (white/light) ✓\n`;
+  prompt += `     * Primary: #FF6B35 (orange, vibrant) → Secondary: #F5F5F5 (gray/subtle) ✓\n`;
+  prompt += `   - **INVALID COMBINATION**:\n`;
+  prompt += `     * Primary: #00C853 → Secondary: #00C853 ✗ SAME COLOR - NOT ALLOWED!\n`;
   prompt += `   - Usually has transparent/subtle background, border, or muted colors\n`;
   prompt += `   - Common for actions like "Login", "Learn More", "Contact", "Documentation"\n`;
   prompt += `   - Often has an outline/border instead of filled background\n`;
+  prompt += `   - Look at the COLOR GROUPS above - pick from a DIFFERENT group than primary\n`;
+  prompt += `   - If all remaining buttons have the same color as primary, set secondaryButtonIndex to -1\n`;
   prompt += `   - Return the button INDEX and reasoning\n\n`;
 
   prompt += `3. **Color Roles**: Based on button colors and page context:\n`;
@@ -350,7 +378,19 @@ function buildBrandingPrompt(input: BrandingLLMInput): string {
   prompt += `   - Prioritize by frequency (shown in usage count)\n`;
   prompt += `   - Assign appropriate roles (heading, body, monospace, display)\n\n`;
 
-  prompt += `**IMPORTANT**: Be decisive and confident. Prioritize vibrant, saturated colors over neutral ones for primary buttons. If no clear primary/secondary, return -1 for that index.`;
+  prompt += `## VALIDATION CHECKLIST - VERIFY BEFORE RESPONDING:\n`;
+  prompt += `Before finalizing your answer, check:\n`;
+  prompt += `1. ✓ Are primaryButtonIndex and secondaryButtonIndex DIFFERENT numbers?\n`;
+  prompt += `2. ✓ Do they have DIFFERENT background colors? (Compare the actual hex/color values)\n`;
+  prompt += `3. ✓ If you selected buttons from the same COLOR GROUP, go back and pick a different secondary\n`;
+  prompt += `4. ✓ If no valid secondary exists (all buttons same color as primary), set secondaryButtonIndex to -1\n\n`;
+
+  prompt += `## FINAL RULES:\n`;
+  prompt += `- Primary and secondary buttons MUST have different background colors (not just different shades - completely different colors)\n`;
+  prompt += `- Primary and secondary buttons MUST be different buttons (different indices)\n`;
+  prompt += `- Refer to the COLOR GROUPS section above to ensure you're picking from different groups\n`;
+  prompt += `- Be decisive and confident. Prioritize vibrant, saturated colors over neutral ones for primary buttons\n`;
+  prompt += `- If no clear primary/secondary exists with different colors, return -1 for that index`;
 
   return prompt;
 }
@@ -362,6 +402,25 @@ export function mergeBrandingResults(
   buttonSnapshots: ButtonSnapshot[],
 ): BrandingProfile {
   const merged: BrandingProfile = { ...js };
+
+  if (buttonSnapshots.length > 0) {
+    const primaryIdx = llm.buttonClassification.primaryButtonIndex;
+    const secondaryIdx = llm.buttonClassification.secondaryButtonIndex;
+
+    (merged as any).__llm_button_reasoning = {
+      primary: {
+        index: primaryIdx,
+        text: primaryIdx >= 0 ? buttonSnapshots[primaryIdx]?.text : "N/A",
+        reasoning: llm.buttonClassification.primaryButtonReasoning,
+      },
+      secondary: {
+        index: secondaryIdx,
+        text: secondaryIdx >= 0 ? buttonSnapshots[secondaryIdx]?.text : "N/A",
+        reasoning: llm.buttonClassification.secondaryButtonReasoning,
+      },
+      confidence: llm.buttonClassification.confidence,
+    };
+  }
 
   // Override button classification if LLM found better ones
   // Use lower threshold (0.5) because LLM is better at semantic understanding
@@ -383,28 +442,18 @@ export function mergeBrandingResults(
 
     if (secondaryIdx >= 0 && secondaryIdx < buttonSnapshots.length) {
       const secondaryBtn = buttonSnapshots[secondaryIdx];
-      if (!merged.components) merged.components = {};
-      merged.components.buttonSecondary = {
-        background: secondaryBtn.background,
-        textColor: secondaryBtn.textColor,
-        borderColor: secondaryBtn.borderColor || undefined,
-        borderRadius: secondaryBtn.borderRadius || "0px",
-      };
-    }
+      const primaryBtn = buttonSnapshots[primaryIdx];
 
-    // Add LLM reasoning to debug
-    (merged as any).__llm_button_reasoning = {
-      primary: {
-        index: primaryIdx,
-        text: primaryIdx >= 0 ? buttonSnapshots[primaryIdx]?.text : "N/A",
-        reasoning: llm.buttonClassification.primaryButtonReasoning,
-      },
-      secondary: {
-        index: secondaryIdx,
-        text: secondaryIdx >= 0 ? buttonSnapshots[secondaryIdx]?.text : "N/A",
-        reasoning: llm.buttonClassification.secondaryButtonReasoning,
-      },
-    };
+      if (!primaryBtn || secondaryBtn.background !== primaryBtn.background) {
+        if (!merged.components) merged.components = {};
+        merged.components.buttonSecondary = {
+          background: secondaryBtn.background,
+          textColor: secondaryBtn.textColor,
+          borderColor: secondaryBtn.borderColor || undefined,
+          borderRadius: secondaryBtn.borderRadius || "0px",
+        };
+      }
+    }
   }
 
   // Override colors if LLM has high confidence

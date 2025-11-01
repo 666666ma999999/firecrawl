@@ -49,11 +49,9 @@ interface RawBrandingData {
   colorScheme: "light" | "dark";
 }
 
-// Convert rgba/rgb to hex
 function hexify(rgba: string): string | null {
   if (!rgba) return null;
 
-  // Already hex
   if (/^#([0-9a-f]{3,8})$/i.test(rgba)) {
     if (rgba.length === 4) {
       return (
@@ -69,14 +67,26 @@ function hexify(rgba: string): string | null {
     return rgba.toUpperCase();
   }
 
-  // Parse Display P3
   const colorMatch = rgba.match(
-    /color\((?:display-p3|srgb)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/i,
+    /color\((?:display-p3|srgb)\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)(?:\s*\/\s*([\d.]+))?\)/i,
   );
   if (colorMatch) {
-    const [r, g, b] = colorMatch
+    let [r, g, b] = colorMatch
       .slice(1, 4)
       .map(n => Math.max(0, Math.min(255, Math.round(parseFloat(n) * 255))));
+
+    const alphaStr = colorMatch[4];
+    if (alphaStr !== undefined) {
+      const alpha = parseFloat(alphaStr);
+      if (alpha < 0.1) return null;
+
+      if (alpha < 0.95) {
+        r = Math.round(r * alpha + 255 * (1 - alpha));
+        g = Math.round(g * alpha + 255 * (1 - alpha));
+        b = Math.round(b * alpha + 255 * (1 - alpha));
+      }
+    }
+
     return (
       "#" +
       [r, g, b]
@@ -86,12 +96,27 @@ function hexify(rgba: string): string | null {
     );
   }
 
-  // Parse rgb/rgba
-  const match = rgba.match(/^rgba?\((\d+),\s*(\d+),\s*(\d+)/i);
+  const match = rgba.match(
+    /^rgba?\((\d+),\s*(\d+),\s*(\d+)(?:,\s*([\d.]+))?\)/i,
+  );
   if (!match) return null;
-  const [r, g, b] = match
+
+  let [r, g, b] = match
     .slice(1, 4)
     .map(n => Math.max(0, Math.min(255, parseInt(n, 10))));
+
+  const alphaStr = match[4];
+  if (alphaStr !== undefined) {
+    const alpha = parseFloat(alphaStr);
+    if (alpha < 0.1) return null;
+
+    if (alpha < 0.95) {
+      r = Math.round(r * alpha + 255 * (1 - alpha));
+      g = Math.round(g * alpha + 255 * (1 - alpha));
+      b = Math.round(b * alpha + 255 * (1 - alpha));
+    }
+  }
+
   return (
     "#" +
     [r, g, b]
@@ -225,7 +250,6 @@ function pickLogo(images: Array<{ type: string; src: string }>): string | null {
 
 // Process raw branding data into BrandingProfile
 export function processRawBranding(raw: RawBrandingData): BrandingProfile {
-  // Infer palette
   const palette = inferPalette(raw.snapshots, raw.cssData.colors);
 
   // Typography
@@ -273,23 +297,42 @@ export function processRawBranding(raw: RawBrandingData): BrandingProfile {
     },
   };
 
-  // Button snapshots for LLM
   const buttonSnapshots = raw.snapshots
-    .filter(s => s.isButton)
+    .filter(s => {
+      if (!s.isButton) return false;
+      if (s.rect.w < 30 || s.rect.h < 30) return false;
+      if (!s.text || s.text.trim().length === 0) return false;
+
+      const bgHex = hexify(s.colors.background);
+      const hasBorder = s.colors.borderWidth && s.colors.borderWidth > 0;
+      if (!bgHex && !hasBorder) return false;
+
+      return true;
+    })
+    .sort((a, b) => b.rect.w * b.rect.h - a.rect.w * a.rect.h)
     .slice(0, 20)
-    .map((s, idx) => ({
-      index: idx,
-      text: s.text || "",
-      html: "",
-      classes: s.classes || "",
-      background: hexify(s.colors.background) || "transparent",
-      textColor: hexify(s.colors.text) || "#000000",
-      borderColor:
+    .map((s, idx) => {
+      let bgHex = hexify(s.colors.background);
+      const borderHex =
         s.colors.borderWidth && s.colors.borderWidth > 0
           ? hexify(s.colors.border)
-          : null,
-      borderRadius: s.radius ? `${s.radius}px` : "0px",
-    }));
+          : null;
+
+      if (!bgHex) {
+        bgHex = "transparent";
+      }
+
+      return {
+        index: idx,
+        text: s.text || "",
+        html: "",
+        classes: s.classes || "",
+        background: bgHex,
+        textColor: hexify(s.colors.text) || "#000000",
+        borderColor: borderHex,
+        borderRadius: s.radius ? `${s.radius}px` : "0px",
+      };
+    });
 
   return {
     colorScheme: raw.colorScheme,
