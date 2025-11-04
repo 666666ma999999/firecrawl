@@ -1,6 +1,7 @@
 import koffi from "koffi";
 import "../services/sentry";
 import * as Sentry from "@sentry/node";
+import * as cheerio from "cheerio";
 
 import dotenv from "dotenv";
 import { logger } from "./logger";
@@ -9,6 +10,49 @@ import { HTML_TO_MARKDOWN_PATH } from "../natives";
 dotenv.config();
 
 // TODO: add a timeout to the Go parser
+
+/**
+ * Pre-processes HTML to handle select/option elements before markdown conversion.
+ * Replaces select elements with comma-separated lists of their options.
+ * Filters out placeholder options (empty value or text starting with "Select").
+ */
+function preprocessSelectElements(html: string): string {
+  const $ = cheerio.load(html);
+
+  $("select").each((_, selectElement) => {
+    const options: string[] = [];
+
+    $(selectElement)
+      .find("option")
+      .each((_, optionElement) => {
+        const $option = $(optionElement);
+        const value = $option.attr("value") || "";
+        const text = $option.text().trim();
+
+        if (
+          value === "" ||
+          /^select\b/i.test(text) ||
+          $option.attr("disabled")
+        ) {
+          return;
+        }
+
+        const normalizedText = text.replace(/\s+/g, " ").trim();
+
+        if (normalizedText) {
+          options.push(normalizedText);
+        }
+      });
+
+    if (options.length > 0) {
+      $(selectElement).replaceWith(options.join(", "));
+    } else {
+      $(selectElement).remove();
+    }
+  });
+
+  return $.html();
+}
 
 class GoMarkdownConverter {
   private static instance: GoMarkdownConverter;
@@ -56,6 +100,8 @@ export async function parseMarkdown(
   if (!html) {
     return "";
   }
+
+  html = preprocessSelectElements(html);
 
   try {
     if (process.env.USE_GO_MARKDOWN_PARSER == "true") {
