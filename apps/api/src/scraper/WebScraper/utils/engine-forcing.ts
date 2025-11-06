@@ -1,6 +1,7 @@
 import { configDotenv } from "dotenv";
 import { parse } from "tldts";
 import { Engine } from "../../scrapeURL/engines";
+import { logger } from "../../../lib/logger";
 
 configDotenv();
 
@@ -26,10 +27,9 @@ export function initializeEngineForcing() {
   try {
     engineMappings = JSON.parse(envVar);
   } catch (error) {
-    console.error(
-      "Error parsing FORCED_ENGINE_DOMAINS environment variable:",
+    logger.error("Error parsing FORCED_ENGINE_DOMAINS environment variable", {
       error,
-    );
+    });
     engineMappings = {};
   }
 }
@@ -73,7 +73,7 @@ export function getEngineForUrl(url: string): Engine | Engine[] | undefined {
   try {
     parsedUrl = parse(lowerCaseUrl);
   } catch (error) {
-    console.log("Error parsing URL for engine forcing:", url, error);
+    logger.warn("Error parsing URL for engine forcing", { url, error });
     return undefined;
   }
 
