@@ -71,8 +71,7 @@ import {
   withSpan,
   setSpanAttributes,
 } from "../../lib/otel-tracer";
-
-const sleep = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+import { ScrapeUrlResponse } from "../../scraper/scrapeURL";
 
 configDotenv();
 
@@ -169,13 +168,27 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
 
   const costTracking = new CostTracking();
 
+  const abortController = new AbortController();
+  const abortTimeoutHandle =
+    remainingTime !== undefined
+      ? setTimeout(
+          () =>
+            abortController.abort(
+              new ScrapeJobTimeoutError("Scrape timed out"),
+            ),
+          remainingTime,
+        )
+      : undefined;
+  const signal = abortController.signal;
+
   try {
     if (remainingTime !== undefined && remainingTime < 0) {
       throw new ScrapeJobTimeoutError("Scrape timed out");
     }
-    const signal = remainingTime
-      ? AbortSignal.timeout(remainingTime)
-      : undefined;
+
+    // const signal = remainingTime
+    //   ? AbortSignal.timeout(remainingTime)
+    //   : undefined;
 
     if (job.data.crawl_id) {
       const sc = (await getCrawl(job.data.crawl_id)) as StoredCrawl;
@@ -184,20 +197,31 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
       }
     }
 
-    const pipeline = await Promise.race([
-      startWebScraperPipeline({
-        job,
-        costTracking,
-      }),
-      ...(remainingTime !== undefined
-        ? [
-            (async () => {
-              await sleep(remainingTime);
-              throw new ScrapeJobTimeoutError("Scrape timed out");
-            })(),
-          ]
-        : []),
-    ]);
+    let pipeline: ScrapeUrlResponse | null = null;
+    let timeoutHandle: NodeJS.Timeout | null = null;
+    try {
+      pipeline = await Promise.race([
+        startWebScraperPipeline({
+          job,
+          costTracking,
+        }),
+        ...(remainingTime !== undefined
+          ? [
+              (async () => {
+                await new Promise(resolve => {
+                  timeoutHandle = setTimeout(resolve, remainingTime);
+                });
+
+                throw new ScrapeJobTimeoutError("Scrape timed out");
+              })(),
+            ]
+          : []),
+      ]);
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
+    }
 
     try {
       signal?.throwIfAborted();
@@ -691,6 +715,8 @@ async function processJob(job: NuQJob<ScrapeJobSingleUrls>) {
       job.data.internalOptions?.bypassBilling ?? false,
     );
     return data;
+  } finally {
+    if (abortTimeoutHandle) clearTimeout(abortTimeoutHandle);
   }
 }
 

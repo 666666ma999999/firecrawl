@@ -8,11 +8,32 @@ export type AbortInstance = {
 export class AbortManager {
   private aborts: AbortInstance[] = [];
   private mappedController: AbortController | null = null;
+  private listeners: Array<{ signal: AbortSignal; handler: () => void }> = [];
 
   constructor(...instances: (AbortInstance | undefined | null)[]) {
     this.aborts = instances.filter(
       x => x !== undefined && x !== null,
     ) as AbortInstance[];
+  }
+
+  dispose() {
+    for (const { signal, handler } of this.listeners) {
+      signal.removeEventListener("abort", handler);
+    }
+
+    this.listeners = [];
+    this.aborts = [];
+    this.mappedController = null;
+  }
+
+  private register(abort: AbortInstance) {
+    const handler = () => {
+      this.mappedController?.abort(
+        new AbortManagerThrownError(abort.tier, abort.throwable()),
+      );
+    };
+    abort.signal.addEventListener("abort", handler);
+    this.listeners.push({ signal: abort.signal, handler });
   }
 
   add(...instances: (AbortInstance | undefined | null)[]) {
@@ -23,11 +44,7 @@ export class AbortManager {
 
     if (this.mappedController !== null) {
       for (const abort of pureInstances) {
-        abort.signal.addEventListener("abort", () => {
-          this.mappedController?.abort(
-            new AbortManagerThrownError(abort.tier, abort.throwable()),
-          );
-        });
+        this.register(abort);
       }
     }
   }
@@ -58,11 +75,7 @@ export class AbortManager {
     this.mappedController = new AbortController();
 
     for (const abort of this.aborts) {
-      abort.signal.addEventListener("abort", () => {
-        this.mappedController?.abort(
-          new AbortManagerThrownError(abort.tier, abort.throwable()),
-        );
-      });
+      this.register(abort);
     }
   }
 

@@ -118,7 +118,7 @@ async function withSemaphore<T>(
   func: (limited: boolean) => Promise<T>,
 ): Promise<T> {
   if (isSelfHosted() && limit <= 1) {
-    limit = 128; // TODO(delong3): change back to `return await func(false)`
+    limit = 1024; // TODO(delong3): change back to `return await func(false)`
     // return await func(false);
   }
 
