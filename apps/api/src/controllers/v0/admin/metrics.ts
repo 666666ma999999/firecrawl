@@ -27,6 +27,8 @@ export async function metricsController(_: Request, res: Response) {
     }
   } while (cursor !== "0");
 
+  const semaphoreMetrics = await teamConcurrencySemaphore.getMetrics();
+
   res.contentType("text/plain").send(`\
 # HELP concurrency_limit_queue_job_count The number of jobs in the concurrency limit queue per team
 # TYPE concurrency_limit_queue_job_count gauge
@@ -36,11 +38,8 @@ ${Object.entries(metrics)
       `concurrency_limit_queue_job_count{team_id="${key}"} ${value}`,
   )
   .join("\n")}
-
 ${nuqGetLocalMetrics()}
-
-${teamConcurrencySemaphore.getMetrics()}
-`);
+${semaphoreMetrics}`);
 }
 
 export async function nuqMetricsController(_: Request, res: Response) {

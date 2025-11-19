@@ -2,10 +2,19 @@ import { isSelfHosted } from "../../lib/deployment";
 import { ScrapeJobTimeoutError, TransportableError } from "../../lib/error";
 import { logger as _logger } from "../../lib/logger";
 import { nuqRedis, semaphoreKeys } from "./redis";
-import { createHistogram } from "node:perf_hooks";
+import { Gauge, Histogram, register } from "prom-client";
 
-let active_semaphores = 0;
-let semaphoreAcquireHistogram = createHistogram();
+const activeSemaphores = new Gauge({
+  name: "noq_semaphore_active",
+  help: "Number of active semaphore holders",
+});
+
+const semaphoreAcquireDuration = new Histogram({
+  name: "noq_semaphore_acquire_duration_seconds",
+  help: "Semaphore acquire time",
+  // Buckets in seconds: 5ms, 10ms, 25ms, 50ms, 100ms, 250ms, 500ms, 1s, 2.5s, 5s, 10s
+  buckets: [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+});
 
 const { scripts, runScript, ensure } = nuqRedis;
 
@@ -52,7 +61,8 @@ async function acquireBlocking(
   let totalRemoved = 0;
   let failedOnce = false;
 
-  let start = process.hrtime.bigint();
+  // Start the timer for the histogram
+  const endTimer = semaphoreAcquireDuration.startTimer();
 
   do {
     if (options.signal.aborted) {
@@ -74,8 +84,8 @@ async function acquireBlocking(
     totalRemoved++;
 
     if (granted === 1) {
-      const duration = process.hrtime.bigint() - start;
-      semaphoreAcquireHistogram.record(duration);
+      // Stop the timer and record the duration
+      endTimer();
       return { limited: failedOnce, removed: totalRemoved };
     }
 
@@ -167,43 +177,20 @@ async function withSemaphore<T>(
 
   const hb = startHeartbeat(teamId, holderId, SEMAPHORE_TTL / 2);
 
-  active_semaphores++;
+  activeSemaphores.inc();
   try {
     const result = await Promise.race([func(limited), hb.promise]);
     return result;
   } finally {
-    active_semaphores--;
+    activeSemaphores.dec();
     hb.stop();
 
     await release(teamId, holderId).catch(() => {});
   }
 }
 
-const getMetrics = () => {
-  const h = semaphoreAcquireHistogram;
-  const p50 = h.percentile(50);
-  const p90 = h.percentile(90);
-  const p99 = h.percentile(99);
-  const max = h.max;
-
-  return (
-    [
-      "# HELP noq_semaphore_active Number of active semaphore holders",
-      "# TYPE noq_semaphore_active gauge",
-      `noq_semaphore_active ${active_semaphores}`,
-
-      "# HELP noq_semaphore_acquire_duration_seconds Semaphore acquire time",
-      "# TYPE noq_semaphore_acquire_duration_seconds gauge",
-      `noq_semaphore_acquire_duration_seconds_p50 ${p50 / 1e9}`,
-      `noq_semaphore_acquire_duration_seconds_p90 ${p90 / 1e9}`,
-      `noq_semaphore_acquire_duration_seconds_p99 ${p99 / 1e9}`,
-      `noq_semaphore_acquire_duration_seconds_max ${max / 1e9}`,
-
-      "# HELP noq_semaphore_acquire_observations_total Number of recorded semaphore acquire durations",
-      "# TYPE noq_semaphore_acquire_observations_total counter",
-      `noq_semaphore_acquire_observations_total ${h.count}`,
-    ].join("\n") + "\n"
-  );
+const getMetrics = async () => {
+  return register.metrics();
 };
 
 export const teamConcurrencySemaphore = {
