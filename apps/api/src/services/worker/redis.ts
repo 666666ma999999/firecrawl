@@ -78,7 +78,10 @@ export const ensureRedis = async () => {
       }
     }
     logger.info("Redis connected and scripts loaded");
-  })();
+  })().catch(err => {
+    initPromise = null;
+    throw err;
+  });
   return initPromise;
 };
 

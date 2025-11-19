@@ -304,7 +304,7 @@ pub async fn extract_metadata(html: Option<String>) -> napi::Result<HashMap<Stri
   .map_err(|e| {
     napi::Error::new(
       napi::Status::GenericFailure,
-      format!("extract_base_href join error: {e}"),
+      format!("extract_metadata join error: {e}"),
     )
   })?
 }
@@ -923,7 +923,7 @@ pub async fn post_process_markdown(markdown: String) -> napi::Result<String> {
   .map_err(|e| {
     napi::Error::new(
       napi::Status::GenericFailure,
-      format!("process_multi_line_links join error: {e}"),
+      format!("post_process_markdown join error: {e}"),
     )
   })?;
 
