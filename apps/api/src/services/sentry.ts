@@ -8,7 +8,14 @@ if (process.env.SENTRY_DSN) {
 
   Sentry.init({
     dsn: process.env.SENTRY_DSN,
-    integrations: integrations => [...integrations, nodeProfilingIntegration()],
+    integrations: integrations => [
+      ...integrations,
+      nodeProfilingIntegration(),
+      Sentry.vercelAIIntegration({
+        recordInputs: true,
+        recordOutputs: true,
+      }),
+    ],
     tracesSampleRate: 0,
     sampleRate: 0.05,
     serverName: process.env.NUQ_POD_NAME,
