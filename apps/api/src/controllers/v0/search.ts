@@ -130,7 +130,9 @@ async function searchHelper(
 
   const docs = (
     await Promise.all(jobDatas.map(x => waitForJob(x.jobId, 60000, false)))
-  ).map(x => toLegacyDocument(x, internalOptions));
+  )
+    .filter(x => x !== null && x !== undefined)
+    .map(x => toLegacyDocument(x, internalOptions));
 
   if (docs.length === 0) {
     return { success: true, error: "No search results found", returnCode: 200 };

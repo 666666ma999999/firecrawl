@@ -155,11 +155,14 @@ export async function crawlStatusController(req: Request, res: Response) {
     const data = jobs
       .filter(
         x =>
-          x.failedReason !== "Concurreny limit hit" && x.returnvalue !== null,
+          x.failedReason !== "Concurreny limit hit" &&
+          x.returnvalue !== null &&
+          x.returnvalue !== undefined,
       )
       .map(x =>
         Array.isArray(x.returnvalue) ? x.returnvalue[0] : x.returnvalue,
-      );
+      )
+      .filter(x => x !== null && x !== undefined);
 
     if (
       jobs.length > 0 &&
@@ -188,7 +191,7 @@ export async function crawlStatusController(req: Request, res: Response) {
         jobStatus === "completed"
           ? []
           : data
-              .filter(x => x !== null)
+              .filter(x => x !== null && x !== undefined)
               .map(x => toLegacyDocument(x, sc.internalOptions)),
     });
   } catch (error) {
