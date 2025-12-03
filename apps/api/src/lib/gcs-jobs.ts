@@ -23,7 +23,7 @@ export async function saveScrapeToGCS(scrape: LoggedScrape): Promise<void> {
       "job.id": scrape.id,
       "job.team_id": scrape.team_id,
       "job.mode": "scrape",
-      "job.success": scrape.success,
+      "job.success": scrape.is_successful,
       "job.num_docs": 1,
     });
 
@@ -63,7 +63,7 @@ export async function saveScrapeToGCS(scrape: LoggedScrape): Promise<void> {
         await blob.setMetadata({
           metadata: {
             job_id: scrape.id ?? null,
-            success: scrape.success,
+            success: scrape.is_successful,
             message: scrape.zeroDataRetention ? null : (scrape.error ?? null),
             num_docs: 1,
             time_taken: scrape.time_taken,
@@ -167,7 +167,7 @@ export async function saveSearchToGCS(search: LoggedSearch): Promise<void> {
               ? null
               : JSON.stringify(search.options),
             credits_cost: search.credits_cost,
-            success: search.success,
+            success: search.is_successful,
             error: search.zeroDataRetention ? null : (search.error ?? null),
             num_results: search.num_results,
           },
@@ -239,7 +239,7 @@ export async function saveExtractToGCS(extract: LoggedExtract): Promise<void> {
                 : extract.team_id,
             options: JSON.stringify(extract.options),
             credits_cost: extract.credits_cost,
-            success: extract.success,
+            success: extract.is_successful,
             error: extract.error ?? null,
           },
         });
