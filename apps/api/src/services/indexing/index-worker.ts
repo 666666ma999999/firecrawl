@@ -44,12 +44,12 @@ import { supabase_service } from "../supabase";
 
 const workerLockDuration = config.WORKER_LOCK_DURATION;
 const workerStalledCheckInterval = config.WORKER_STALLED_CHECK_INTERVAL;
-const jobLockExtendInterval = config.JOB_LOCK_EXTEND_INTERVAL || 15000;
+const jobLockExtendInterval = config.JOB_LOCK_EXTEND_INTERVAL;
 const jobLockExtensionTime = config.JOB_LOCK_EXTENSION_TIME;
 
 const cantAcceptConnectionInterval = config.CANT_ACCEPT_CONNECTION_INTERVAL;
 const connectionMonitorInterval = config.CONNECTION_MONITOR_INTERVAL;
-const gotJobInterval = config.CONNECTION_MONITOR_INTERVAL || 20;
+const gotJobInterval = config.CONNECTION_MONITOR_INTERVAL;
 
 const runningJobs: Set<string> = new Set();
 

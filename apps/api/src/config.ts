@@ -16,9 +16,9 @@ const configSchema = z.object({
   PORT: z.coerce.number().default(3002),
   IS_PRODUCTION: z.stringbool().optional(),
   IS_KUBERNETES: z.stringbool().optional(),
-  FIRECRAWL_APP_HOST: z.string().optional(),
-  FIRECRAWL_APP_PORT: z.string().optional(),
-  FIRECRAWL_APP_SCHEME: z.string().optional(),
+  FIRECRAWL_APP_HOST: z.string().default("firecrawl-app-service"),
+  FIRECRAWL_APP_PORT: z.string().default("3002"),
+  FIRECRAWL_APP_SCHEME: z.string().default("http"),
   LOGGING_LEVEL: z.string().optional(),
 
   // Express
@@ -88,12 +88,12 @@ const configSchema = z.object({
   ENABLE_SEARCH_INDEX: z.stringbool().optional(),
 
   // Worker Configuration
-  WORKER_PORT: z.string().default("3005"),
+  WORKER_PORT: z.coerce.number().optional(),
   NUQ_WORKER_PORT: z.coerce.number().default(3000),
   NUQ_WORKER_START_PORT: z.coerce.number().default(3006),
   NUQ_WORKER_COUNT: z.coerce.number().default(5),
   NUQ_PREFETCH_WORKER_PORT: z.coerce.number().default(3011),
-  EXTRACT_WORKER_PORT: z.string().default("3004"),
+  EXTRACT_WORKER_PORT: z.coerce.number().optional(),
   NUQ_WAIT_MODE: z.string().optional(),
 
   // Job & Lock Management
@@ -111,7 +111,7 @@ const configSchema = z.object({
 
   // External Services
   PLAYWRIGHT_MICROSERVICE_URL: z.string().optional(),
-  HTML_TO_MARKDOWN_SERVICE_URL: z.string().optional(),
+  HTML_TO_MARKDOWN_SERVICE_URL: z.string().default("http://127.0.0.1:8888"),
   SMART_SCRAPE_API_URL: z.string().optional(),
 
   // PDF Processing
@@ -142,7 +142,7 @@ const configSchema = z.object({
   DEBUG_BRANDING: z.stringbool().optional(),
 
   // AI/ML
-  MODEL_NAME: z.string().optional(),
+  MODEL_NAME: z.string().default("gpt-4o-mini"),
   MODEL_EMBEDDING_NAME: z.string().optional(),
   OLLAMA_BASE_URL: z.string().optional(),
   VERTEX_CREDENTIALS: z.string().optional(),
@@ -153,10 +153,10 @@ const configSchema = z.object({
 
   // Testing
   TEST_API_KEY: z.string().optional(),
-  TEST_API_URL: z.string().optional(),
+  TEST_API_URL: z.string().default("http://127.0.0.1:3002"),
   TEST_TEAM_ID: z.string().optional(),
   TEST_SUITE_SELF_HOSTED: z.stringbool().optional(),
-  TEST_SUITE_WEBSITE: z.string().optional(),
+  TEST_SUITE_WEBSITE: z.string().default("http://127.0.0.1:4321"),
   USE_DB_AUTHENTICATION: z.stringbool().optional(),
 
   // Indexing

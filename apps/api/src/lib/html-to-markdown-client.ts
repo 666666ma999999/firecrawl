@@ -39,10 +39,7 @@ export async function convertHTMLToMarkdownWithHttpService(
     return "";
   }
 
-  const url =
-    serviceUrl ||
-    config.HTML_TO_MARKDOWN_SERVICE_URL ||
-    "http://localhost:8080";
+  const url = serviceUrl || config.HTML_TO_MARKDOWN_SERVICE_URL;
   const startTime = Date.now();
 
   try {

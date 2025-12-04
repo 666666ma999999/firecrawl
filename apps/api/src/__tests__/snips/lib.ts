@@ -8,7 +8,7 @@ import { TeamFlags } from "../../controllers/v1/types";
 // Configuration
 // =========================================
 
-export const TEST_API_URL = config.TEST_API_URL || "http://127.0.0.1:3002";
+export const TEST_API_URL = config.TEST_API_URL;
 export const TEST_URL = TEST_API_URL; // backwards compat temp
 
 const stripTrailingSlash = (url: string) => {
@@ -16,9 +16,7 @@ const stripTrailingSlash = (url: string) => {
   return url.endsWith("/") ? url.substring(0, url.length - 1) : url;
 };
 
-export const TEST_SUITE_WEBSITE = stripTrailingSlash(
-  config.TEST_SUITE_WEBSITE || "http://127.0.0.1:4321",
-);
+export const TEST_SUITE_WEBSITE = stripTrailingSlash(config.TEST_SUITE_WEBSITE);
 
 export const TEST_SELF_HOST = !!config.TEST_SUITE_SELF_HOSTED;
 export const TEST_PRODUCTION = !TEST_SELF_HOST;
