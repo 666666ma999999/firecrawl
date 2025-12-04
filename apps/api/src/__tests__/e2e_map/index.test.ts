@@ -1,4 +1,5 @@
 import request from "supertest";
+import { config } from "../../config";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,7 +11,7 @@ describe("E2E Tests for Map API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://firecrawl.dev",
@@ -32,7 +33,7 @@ describe("E2E Tests for Map API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://firecrawl.dev",
@@ -56,7 +57,7 @@ describe("E2E Tests for Map API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://firecrawl.dev",
@@ -79,7 +80,7 @@ describe("E2E Tests for Map API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://firecrawl.dev",
@@ -100,7 +101,7 @@ describe("E2E Tests for Map API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://geekflare.com/sitemap_index.xml",

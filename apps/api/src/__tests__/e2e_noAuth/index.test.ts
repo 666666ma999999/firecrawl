@@ -1,4 +1,5 @@
 import request from "supertest";
+import { config } from "../../config";
 import dotenv from "dotenv";
 import { BLOCKLISTED_URL_MESSAGE } from "../../lib/strings";
 const fs = require("fs");
@@ -14,15 +15,15 @@ describe("E2E Tests for API Routes with No Authentication", () => {
   // save original process.env
   beforeAll(() => {
     originalEnv = { ...process.env };
-    process.env.USE_DB_AUTHENTICATION = "false";
-    process.env.SUPABASE_ANON_TOKEN = "";
-    process.env.SUPABASE_URL = "";
-    process.env.SUPABASE_SERVICE_TOKEN = "";
-    process.env.OPENAI_API_KEY = "";
-    process.env.BULL_AUTH_KEY = "";
-    process.env.PLAYWRIGHT_MICROSERVICE_URL = "";
-    process.env.LLAMAPARSE_API_KEY = "";
-    process.env.TEST_API_KEY = "";
+    config.USE_DB_AUTHENTICATION = false;
+    config.SUPABASE_ANON_TOKEN = "";
+    config.SUPABASE_URL = "";
+    config.SUPABASE_SERVICE_TOKEN = "";
+    config.OPENAI_API_KEY = "";
+    config.BULL_AUTH_KEY = "";
+    config.PLAYWRIGHT_MICROSERVICE_URL = "";
+    config.LLAMAPARSE_API_KEY = "";
+    config.TEST_API_KEY = "";
   });
 
   // restore original process.env

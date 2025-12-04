@@ -1,4 +1,5 @@
 import request from "supertest";
+import { config } from "../../config";
 import dotenv from "dotenv";
 
 dotenv.config();
@@ -10,7 +11,7 @@ describe("E2E Tests for Map V2 API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v2/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://roastmywebsite.ai",
@@ -46,7 +47,7 @@ describe("E2E Tests for Map V2 API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v2/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://firecrawl.dev",
@@ -67,7 +68,7 @@ describe("E2E Tests for Map V2 API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v2/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://firecrawl.dev",
@@ -87,7 +88,7 @@ describe("E2E Tests for Map V2 API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v2/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://firecrawl.dev",
@@ -109,7 +110,7 @@ describe("E2E Tests for Map V2 API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v2/map")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           url: "https://firecrawl.dev",

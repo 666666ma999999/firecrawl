@@ -1,4 +1,5 @@
 import request from "supertest";
+import { config } from "../../config";
 import dotenv from "dotenv";
 import {
   FirecrawlCrawlResponse,
@@ -15,7 +16,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: ["https://firecrawl.dev/*"],
@@ -53,7 +54,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: ["firecrawl.dev/*"],
@@ -91,7 +92,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: ["https://firecrawl.dev/*"],
@@ -128,7 +129,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: ["fivetran.com/*"],
@@ -153,7 +154,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: ["fivetran.com/*"],
@@ -184,7 +185,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: [
@@ -214,7 +215,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: ["https://mintlify.com/docs/*"],
@@ -258,7 +259,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: ["https://ericciarla.com/"],
@@ -291,7 +292,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: ["https://docs.firecrawl.dev"],
@@ -312,7 +313,7 @@ describe("E2E Tests for Extract API Routes", () => {
     async () => {
       const response = await request(TEST_URL)
         .post("/v1/extract")
-        .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+        .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
         .set("Content-Type", "application/json")
         .send({
           urls: [
@@ -348,7 +349,7 @@ describe("E2E Tests for Extract API Routes", () => {
       async () => {
         const response = await request(TEST_URL)
           .get("/v2/extract/None")
-          .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+          .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
           .send();
 
         expect(response.statusCode).toBe(400);
@@ -364,7 +365,7 @@ describe("E2E Tests for Extract API Routes", () => {
       async () => {
         const response = await request(TEST_URL)
           .get("/v2/extract/not-a-uuid")
-          .set("Authorization", `Bearer ${process.env.TEST_API_KEY}`)
+          .set("Authorization", `Bearer ${config.TEST_API_KEY}`)
           .send();
 
         expect(response.statusCode).toBe(400);

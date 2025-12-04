@@ -6,6 +6,7 @@
  */
 
 import axios, { AxiosInstance, AxiosError } from "axios";
+import { config } from "../config";
 import { logger } from "./logger";
 import * as Sentry from "@sentry/node";
 
@@ -40,7 +41,7 @@ export async function convertHTMLToMarkdownWithHttpService(
 
   const url =
     serviceUrl ||
-    process.env.HTML_TO_MARKDOWN_SERVICE_URL ||
+    config.HTML_TO_MARKDOWN_SERVICE_URL ||
     "http://localhost:8080";
   const startTime = Date.now();
 
