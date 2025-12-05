@@ -1,6 +1,3 @@
-import { configDotenv } from "dotenv";
-configDotenv();
-
 import { config } from "../../config";
 import { TeamFlags } from "../../controllers/v1/types";
 

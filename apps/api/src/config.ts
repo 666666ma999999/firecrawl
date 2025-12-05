@@ -1,5 +1,7 @@
-import "dotenv/config";
+import { configDotenv } from "dotenv";
 import { z } from "zod";
+
+configDotenv();
 
 /* Codecs */
 const delimitedList = (separator = ",") => {
