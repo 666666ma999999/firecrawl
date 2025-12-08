@@ -120,6 +120,8 @@ class DocumentMetadata(BaseModel):
     cache_state: Optional[Literal["hit", "miss"]] = None
     cached_at: Optional[str] = None
     credits_used: Optional[int] = None
+    concurrency_limited: Optional[bool] = None
+    concurrency_queue_duration_ms: Optional[int] = None
 
     # Error information
     error: Optional[str] = None
@@ -948,7 +950,7 @@ class SearchRequest(BaseModel):
     tbs: Optional[str] = None
     location: Optional[str] = None
     ignore_invalid_urls: Optional[bool] = None
-    timeout: Optional[int] = 60000
+    timeout: Optional[int] = 300000
     scrape_options: Optional[ScrapeOptions] = None
     integration: Optional[str] = None
 
