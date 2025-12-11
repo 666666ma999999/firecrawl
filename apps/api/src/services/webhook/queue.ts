@@ -29,6 +29,7 @@ class WebhookQueue {
   private connection: amqp.ChannelModel | null = null;
   private channel: amqp.Channel | null = null;
   private connecting: boolean = false;
+  private closing: boolean = false;
 
   async connect(): Promise<void> {
     if (this.connection && this.channel) return;
@@ -64,14 +65,16 @@ class WebhookQueue {
         });
         this.connection = null;
         this.channel = null;
-        setTimeout(() => {
-          this.connect().catch(err =>
-            _logger.error("Failed to reconnect to webhook RabbitMQ", {
-              err,
-              module: "webhook-queue",
-            }),
-          );
-        }, 5000);
+        if (!this.closing) {
+          setTimeout(() => {
+            this.connect().catch(err =>
+              _logger.error("Failed to reconnect to webhook RabbitMQ", {
+                err,
+                module: "webhook-queue",
+              }),
+            );
+          }, 5000);
+        }
       });
 
       this.connection.on("error", err => {
@@ -119,22 +122,41 @@ class WebhookQueue {
         teamId: message.team_id,
         jobId: message.job_id,
       });
-      await Promise.race([
-        new Promise<void>(resolve => {
-          this.channel!.once("drain", () => resolve());
-        }),
-        new Promise<void>((_, reject) => {
-          this.channel!.once("close", () =>
-            reject(new Error("Channel closed while waiting for drain")),
-          );
-        }),
-        new Promise<void>((_, reject) => {
-          this.channel!.once("error", err => reject(err));
-        }),
-        new Promise<void>((_, reject) =>
-          setTimeout(() => reject(new Error("Drain timeout after 30s")), 30000),
-        ),
-      ]);
+
+      const channel = this.channel;
+      let timeoutHandle: NodeJS.Timeout | null = null;
+      let drainHandler: (() => void) | null = null;
+      let closeHandler: (() => void) | null = null;
+      let errorHandler: ((err: Error) => void) | null = null;
+
+      try {
+        await Promise.race([
+          new Promise<void>(resolve => {
+            drainHandler = () => resolve();
+            channel!.once("drain", drainHandler);
+          }),
+          new Promise<void>((_, reject) => {
+            closeHandler = () =>
+              reject(new Error("Channel closed while waiting for drain"));
+            channel!.once("close", closeHandler);
+          }),
+          new Promise<void>((_, reject) => {
+            errorHandler = (err: Error) => reject(err);
+            channel!.once("error", errorHandler);
+          }),
+          new Promise<void>((_, reject) => {
+            timeoutHandle = setTimeout(
+              () => reject(new Error("Drain timeout after 30s")),
+              30000,
+            );
+          }),
+        ]);
+      } finally {
+        if (timeoutHandle) clearTimeout(timeoutHandle);
+        if (drainHandler) channel!.removeListener("drain", drainHandler);
+        if (closeHandler) channel!.removeListener("close", closeHandler);
+        if (errorHandler) channel!.removeListener("error", errorHandler);
+      }
     }
 
     _logger.info("Webhook message published to queue", {
@@ -146,6 +168,7 @@ class WebhookQueue {
   }
 
   async close(): Promise<void> {
+    this.closing = true;
     if (this.channel) {
       await this.channel.close();
       this.channel = null;

@@ -54,6 +54,7 @@ async fn run_inner(config: &Config, shutdown_rx: &mut broadcast::Receiver<()>) -
         .await?;
 
     let mut retry_args = FieldTable::default();
+    retry_args.insert("x-queue-type".into(), LongString::from("quorum").into());
     retry_args.insert("x-dead-letter-exchange".into(), LongString::from("").into());
     retry_args.insert(
         "x-dead-letter-routing-key".into(),

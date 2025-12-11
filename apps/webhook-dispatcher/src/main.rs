@@ -39,10 +39,13 @@ async fn main() -> Result<()> {
         _ = async {
             #[cfg(unix)]
             {
-                signal::unix::signal(signal::unix::SignalKind::terminate())
-                    .expect("Failed to install SIGTERM handler")
-                    .recv()
-                    .await
+                match signal::unix::signal(signal::unix::SignalKind::terminate()) {
+                    Ok(mut sig) => sig.recv().await,
+                    Err(e) => {
+                        error!(error = %e, "Failed to install SIGTERM handler");
+                        None
+                    }
+                }
             }
             #[cfg(not(unix))]
             {
