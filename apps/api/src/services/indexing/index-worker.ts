@@ -136,7 +136,7 @@ const processPrecrawlJob = async (token: string, job: Job) => {
 
   const MAX_PRE_CRAWL_BUDGET = 25000; // maximum number of pages to precrawl this job
 
-  const MAX_PRE_CRAWL_DOMAINS = 150; // maximum number of domains to precrawl
+  const MAX_PRE_CRAWL_DOMAINS = 500; // maximum number of domains to precrawl
   const MIN_DOMAIN_PRIORITY = 4.0; // minimum priority score to consider a domain
   const MIN_DOMAIN_EVENTS = 1000; // minimum number of events to consider a domain
 
@@ -144,7 +144,7 @@ const processPrecrawlJob = async (token: string, job: Job) => {
   const DOMAIN_URL_BATCH_SIZE = 25;
 
   const MIN_URLS_PER_DOMAIN = 10;
-  const MAX_URLS_PER_DOMAIN = 500;
+  const MAX_URLS_PER_DOMAIN = 50;
 
   const teamId = config.PRECRAWL_TEAM_ID;
 
