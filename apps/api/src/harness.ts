@@ -161,7 +161,7 @@ function waitForPort(
   options: { signal?: AbortSignal; timeoutMs?: number } = {},
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const { signal, timeoutMs = 30000 } = options;
+    const { signal, timeoutMs = config.HARNESS_STARTUP_TIMEOUT_MS } = options;
 
     let settled = false;
     let retryTimer: NodeJS.Timeout | null = null;
@@ -455,7 +455,7 @@ async function startNuqPostgresContainer(
 async function waitForPostgres(
   host: string,
   port: number,
-  timeoutMs: number = 30000,
+  timeoutMs: number = config.HARNESS_STARTUP_TIMEOUT_MS,
 ): Promise<void> {
   logger.info("Waiting for PostgreSQL to be ready...");
   const start = Date.now();
@@ -858,8 +858,10 @@ async function waitForTermination(services: Services): Promise<void> {
 
   const promises: Promise<void>[] = [
     new Promise<void>(resolve => {
-      process.on("SIGINT", resolve);
-      process.on("SIGTERM", resolve);
+      if (require.main === module) {
+        process.on("SIGINT", resolve);
+        process.on("SIGTERM", resolve);
+      }
     }),
   ];
 
@@ -918,8 +920,10 @@ function printUsage() {
 }
 
 async function main() {
-  process.on("SIGINT", gracefulShutdown);
-  process.on("SIGTERM", gracefulShutdown);
+  if (require.main === module) {
+    process.on("SIGINT", gracefulShutdown);
+    process.on("SIGTERM", gracefulShutdown);
+  }
 
   try {
     if (process.argv.length < 3) {

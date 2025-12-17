@@ -42,6 +42,7 @@ import { crawlGroup } from "../worker/nuq";
 import { getACUCTeam } from "../../controllers/auth";
 import { supabase_service } from "../supabase";
 import { processEngpickerJob } from "../../lib/engpicker";
+import { logRequest } from "../logging/log_job";
 
 const workerLockDuration = config.WORKER_LOCK_DURATION;
 const workerStalledCheckInterval = config.WORKER_STALLED_CHECK_INTERVAL;
@@ -134,17 +135,17 @@ const processPrecrawlJob = async (token: string, job: Job) => {
   // set to true to only run domain precrawl, no individual URLs or crawl jobs
   const DOMAIN_ONLY_RUN = false;
 
-  const MAX_PRE_CRAWL_BUDGET = 10000; // maximum number of pages to precrawl this job
+  const MAX_PRE_CRAWL_BUDGET = 25000; // maximum number of pages to precrawl this job
 
-  const MAX_PRE_CRAWL_DOMAINS = 100; // maximum number of domains to precrawl
-  const MIN_DOMAIN_PRIORITY = 2.0; // minimum priority score to consider a domain
+  const MAX_PRE_CRAWL_DOMAINS = 500; // maximum number of domains to precrawl
+  const MIN_DOMAIN_PRIORITY = 4.0; // minimum priority score to consider a domain
   const MIN_DOMAIN_EVENTS = 1000; // minimum number of events to consider a domain
 
   // number of domain hashes to query in parallel - keep relatively low for now (25 is good)
   const DOMAIN_URL_BATCH_SIZE = 25;
 
   const MIN_URLS_PER_DOMAIN = 10;
-  const MAX_URLS_PER_DOMAIN = 250;
+  const MAX_URLS_PER_DOMAIN = 50;
 
   const teamId = config.PRECRAWL_TEAM_ID;
 
@@ -447,6 +448,18 @@ const processPrecrawlJob = async (token: string, job: Job) => {
           try {
             const { url, budget: limit } = target;
 
+            const crawlId = uuidv7();
+            await logRequest({
+              id: crawlId,
+              kind: "crawl",
+              api_version: "v2",
+              team_id: teamId,
+              origin: "precrawl",
+              target_hint: url,
+              zeroDataRetention: false,
+              api_key_id: null,
+            });
+
             const crawlerOptions = {
               ...crawlRequestSchema.parse({ url, limit }),
               url: undefined, // unsure why this is needed but leaving for now
@@ -475,8 +488,6 @@ const processPrecrawlJob = async (token: string, job: Job) => {
               maxConcurrency: undefined,
               zeroDataRetention: false,
             };
-
-            const crawlId = uuidv7();
 
             await crawlGroup.addGroup(
               crawlId,
@@ -545,15 +556,17 @@ const processPrecrawlJob = async (token: string, job: Job) => {
 
 let isShuttingDown = false;
 
-process.on("SIGINT", () => {
-  logger.info("Received SIGINT. Shutting down gracefully...");
-  isShuttingDown = true;
-});
+if (require.main === module) {
+  process.on("SIGINT", () => {
+    logger.info("Received SIGINT. Shutting down gracefully...");
+    isShuttingDown = true;
+  });
 
-process.on("SIGTERM", () => {
-  logger.info("Received SIGTERM. Shutting down gracefully...");
-  isShuttingDown = true;
-});
+  process.on("SIGTERM", () => {
+    logger.info("Received SIGTERM. Shutting down gracefully...");
+    isShuttingDown = true;
+  });
+}
 
 let cantAcceptConnectionCount = 0;
 

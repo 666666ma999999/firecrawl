@@ -1254,6 +1254,8 @@ export type TeamFlags = {
   crawlTtlHours?: number;
   ipWhitelist?: boolean;
   skipCountryCheck?: boolean;
+  extractV3Beta?: boolean;
+  agentBeta?: boolean;
 } | null;
 
 export type AuthCreditUsageChunkFromTeam = Omit<

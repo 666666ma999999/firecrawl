@@ -64,6 +64,8 @@ export interface ExtractResult {
   llmUsage?: number;
   totalUrlsScraped?: number;
   sources?: Record<string, string[]>;
+  tokensBilled?: number;
+  creditsBilled?: number;
 }
 
 type completions = {
@@ -134,7 +136,7 @@ export async function performExtraction(
 
       const tokens_billed = 300 + calculateThinkingCost(costTracking);
       const creditsToBill = Math.ceil(tokens_billed / 15);
-      logExtract({
+      await logExtract({
         id: extractId,
         request_id: extractId,
         urls: request.urls || [],
@@ -667,7 +669,7 @@ export async function performExtraction(
         });
         const tokens_billed = 300 + calculateThinkingCost(costTracking);
         const creditsToBill = Math.ceil(tokens_billed / 15);
-        logExtract({
+        await logExtract({
           id: extractId,
           request_id: extractId,
           urls: request.urls || [],
@@ -774,7 +776,7 @@ export async function performExtraction(
       } catch (error) {
         const tokens_billed = 300 + calculateThinkingCost(costTracking);
         const creditsToBill = Math.ceil(tokens_billed / 15);
-        logExtract({
+        await logExtract({
           id: extractId,
           request_id: extractId,
           urls: request.urls || [],
@@ -816,7 +818,7 @@ export async function performExtraction(
             );
           },
         );
-        logExtract({
+        await logExtract({
           id: extractId,
           request_id: extractId,
           urls: request.urls || [],
@@ -1005,7 +1007,14 @@ export async function performExtraction(
     );
 
     // Log job with token usage and sources
-    logExtract({
+    logger.debug("Logging extract to database", {
+      extractId,
+      llmUsage,
+      sources,
+      tokensBilled: tokensToBill,
+      creditsBilled: creditsToBill,
+    });
+    await logExtract({
       id: extractId,
       request_id: extractId,
       urls: request.urls || [],
@@ -1016,20 +1025,19 @@ export async function performExtraction(
       result: finalResult ?? {},
       model_kind: "fire-1",
       cost_tracking: costTracking.toJSON(),
-    }).then(() => {
-      updateExtract(extractId, {
-        status: "completed",
-        llmUsage,
-        sources,
-        tokensBilled: tokensToBill,
-        creditsBilled: creditsToBill,
-        // costTracking,
-      }).catch(error => {
-        logger.error(
-          `Failed to update extract ${extractId} status to completed: ${error}`,
-        );
+    })
+      .then(() => {
+        logger.debug("Extract completed successfully", {
+          extractId,
+          llmUsage,
+          sources,
+          tokensBilled: tokensToBill,
+          creditsBilled: creditsToBill,
+        });
+      })
+      .catch(error => {
+        logger.error("Failed to log extract to database", { extractId, error });
       });
-    });
 
     logger.debug("Done!");
 
@@ -1062,6 +1070,8 @@ export async function performExtraction(
       llmUsage,
       totalUrlsScraped,
       sources,
+      tokensBilled: tokensToBill,
+      creditsBilled: creditsToBill,
     };
   } catch (error) {
     const tokens_billed = 300 + calculateThinkingCost(costTracking);

@@ -535,8 +535,23 @@ export interface ExtractResponse {
   creditsUsed?: number;
 }
 
+export interface AgentResponse {
+  success: boolean;
+  id: string;
+  error?: string;
+}
+
+export interface AgentStatusResponse {
+  success: boolean;
+  status: 'processing' | 'completed' | 'failed';
+  error?: string;
+  data?: unknown;
+  expiresAt: string;
+  creditsUsed?: number;
+}
+
 export interface AgentOptions {
-  model: 'FIRE-1';
+  model: 'FIRE-1' | 'v3-beta';
 }
 
 export interface ConcurrencyCheck {

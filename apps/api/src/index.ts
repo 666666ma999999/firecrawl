@@ -37,6 +37,7 @@ import { getErrorContactMessage } from "./lib/deployment";
 import { initializeBlocklist } from "./scraper/WebScraper/utils/blocklist";
 import { initializeEngineForcing } from "./scraper/WebScraper/utils/engine-forcing";
 import responseTime from "response-time";
+import { shutdownWebhookQueue } from "./services/webhook";
 
 const { createBullBoard } = require("@bull-board/api");
 const { BullMQAdapter } = require("@bull-board/api/bullMQAdapter");
@@ -92,7 +93,10 @@ const { addQueue, removeQueue, setQueues, replaceQueues } = createBullBoard({
 app.use(`/admin/${config.BULL_AUTH_KEY}/queues`, serverAdapter.getRouter());
 
 app.get("/", (_, res) => {
-  res.redirect("https://docs.firecrawl.dev/api-reference/v2-introduction");
+  res.json({
+    message: "Firecrawl API",
+    documentation_url: "https://docs.firecrawl.dev",
+  });
 });
 
 app.get("/e2e-test", (_, res) => {
@@ -137,14 +141,18 @@ async function startServer(port = DEFAULT_PORT) {
     server.close(() => {
       logger.info("Server closed.");
       nuqShutdown().finally(() => {
-        logger.info("NUQ shutdown complete");
-        process.exit(0);
+        shutdownWebhookQueue().finally(() => {
+          logger.info("NUQ shutdown complete");
+          process.exit(0);
+        });
       });
     });
   };
 
-  process.on("SIGTERM", exitHandler);
-  process.on("SIGINT", exitHandler);
+  if (require.main === module) {
+    process.on("SIGTERM", exitHandler);
+    process.on("SIGINT", exitHandler);
+  }
   return server;
 }
 

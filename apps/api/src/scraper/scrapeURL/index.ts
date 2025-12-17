@@ -2,6 +2,7 @@ import { Logger } from "winston";
 import { config } from "../../config";
 import * as Sentry from "@sentry/node";
 import { withSpan, setSpanAttributes } from "../../lib/otel-tracer";
+import { captureExceptionWithZdrCheck } from "../../services/sentry";
 
 import {
   type Document,
@@ -65,6 +66,7 @@ import {
   createRobotsChecker,
   isUrlAllowedByRobots,
 } from "../../lib/robots-txt";
+import { getCrawl } from "../../lib/crawl-redis";
 import {
   AbortInstance,
   AbortManager,
@@ -345,6 +347,16 @@ async function scrapeURLLoopIter(
       engine,
     );
 
+    const hasMarkdown = hasFormatOfType(meta.options.formats, "markdown");
+    const hasChangeTracking = hasFormatOfType(
+      meta.options.formats,
+      "changeTracking",
+    );
+    const hasJson = hasFormatOfType(meta.options.formats, "json");
+    const hasSummary = hasFormatOfType(meta.options.formats, "summary");
+    const needsMarkdown =
+      hasMarkdown || hasChangeTracking || hasJson || hasSummary;
+
     let checkMarkdown: string;
     let transformedHtml: string | undefined;
     let usedOnlyMainContent: boolean | undefined;
@@ -354,6 +366,8 @@ async function scrapeURLLoopIter(
       meta.internalOptions.teamId === "robots-txt"
     ) {
       // For sitemap/robots-txt, we don't need to transform HTML or convert to markdown
+      checkMarkdown = engineResult.html?.trim() ?? "";
+    } else if (!needsMarkdown) {
       checkMarkdown = engineResult.html?.trim() ?? "";
     } else {
       // Transform HTML and convert to markdown for quality checking
@@ -387,6 +401,11 @@ async function scrapeURLLoopIter(
         "Scrape via " +
           engine +
           " deemed unsuccessful due to proxy inadequacy. Adding stealthProxy flag.",
+        {
+          factors: { isLongEnough, isGoodStatusCode, hasNoPageError },
+          statusCode: engineResult.statusCode,
+          length: engineResult.html?.trim().length ?? 0,
+        },
       );
       throw new AddFeatureError(["stealthProxy"]);
     }
@@ -872,16 +891,25 @@ export async function scrapeURL(
 
         if (!isRobotsTxtPath) {
           try {
-            const { content: robotsTxt } = await fetchRobotsTxt(
-              {
-                url: urlToCheck,
-                zeroDataRetention: internalOptions.zeroDataRetention || false,
-                location: options.location,
-              },
-              id,
-              meta.logger,
-              meta.abort.asSignal(),
-            );
+            let robotsTxt: string | undefined;
+            if (internalOptions.crawlId) {
+              const crawl = await getCrawl(internalOptions.crawlId);
+              robotsTxt = crawl?.robots;
+            }
+
+            if (!robotsTxt) {
+              const { content } = await fetchRobotsTxt(
+                {
+                  url: urlToCheck,
+                  zeroDataRetention: internalOptions.zeroDataRetention || false,
+                  location: options.location,
+                },
+                id,
+                meta.logger,
+                meta.abort.asSignal(),
+              );
+              robotsTxt = content;
+            }
 
             const checker = createRobotsChecker(urlToCheck, robotsTxt);
             const isAllowed = isUrlAllowedByRobots(urlToCheck, checker.robots);
@@ -1096,11 +1124,15 @@ export async function scrapeURL(
         meta.logger.debug("scrapeURL index metrics", {
           module: "scrapeURL/index-metrics",
           timeTaken: Date.now() - startTime,
-          changeTracking: hasFormatOfType(
+          changeTracking: !!hasFormatOfType(
             meta.options.formats,
             "changeTracking",
           ),
-          branding: hasFormatOfType(meta.options.formats, "branding"),
+          summary: !!hasFormatOfType(meta.options.formats, "summary"),
+          json: !!hasFormatOfType(meta.options.formats, "json"),
+          screenshot: !!hasFormatOfType(meta.options.formats, "screenshot"),
+          images: !!hasFormatOfType(meta.options.formats, "images"),
+          branding: !!hasFormatOfType(meta.options.formats, "branding"),
           pdfMaxPages: getPDFMaxPages(meta.options.parsers),
           maxAge: meta.options.maxAge,
           headers: meta.options.headers
@@ -1139,11 +1171,15 @@ export async function scrapeURL(
         meta.logger.debug("scrapeURL index metrics", {
           module: "scrapeURL/index-metrics",
           timeTaken: Date.now() - startTime,
-          changeTracking: hasFormatOfType(
+          changeTracking: !!hasFormatOfType(
             meta.options.formats,
             "changeTracking",
           ),
-          branding: hasFormatOfType(meta.options.formats, "branding"),
+          summary: !!hasFormatOfType(meta.options.formats, "summary"),
+          json: !!hasFormatOfType(meta.options.formats, "json"),
+          screenshot: !!hasFormatOfType(meta.options.formats, "screenshot"),
+          images: !!hasFormatOfType(meta.options.formats, "images"),
+          branding: !!hasFormatOfType(meta.options.formats, "branding"),
           pdfMaxPages: getPDFMaxPages(meta.options.parsers),
           maxAge: meta.options.maxAge,
           headers: meta.options.headers
@@ -1217,7 +1253,11 @@ export async function scrapeURL(
         errorType = "AbortManagerThrownError";
         throw error.inner;
       } else {
-        Sentry.captureException(error);
+        captureExceptionWithZdrCheck(error, {
+          extra: {
+            zeroDataRetention: internalOptions.zeroDataRetention ?? false,
+          },
+        });
         meta.logger.error("scrapeURL: Unexpected error happened", { error });
         // TODO: results?
       }

@@ -4,30 +4,12 @@ import { supabase_service } from "../../../services/supabase";
 import crypto from "crypto";
 import { z } from "zod";
 import { validate as isUuid } from "uuid";
-import { parseApi } from "../../../lib/parseApi";
+import { parseApi, apiKeyToFcApiKey } from "../../../lib/parseApi";
 
-/**
- * Extracts the external user ID from a synthetic email if it matches the pattern.
- * Returns null if the email is not a synthetic one for this integration.
- */
-function extractExternalUserId(
-  email: string,
-  integrationSlug: string,
-): string | null {
-  const syntheticDomain = `@${integrationSlug}.partner.firecrawl.dev`;
-  if (email.endsWith(syntheticDomain)) {
-    return email.slice(0, -syntheticDomain.length);
-  }
-  return null;
-}
-
-export async function integValidateApiKeyController(
-  req: Request,
-  res: Response,
-) {
+export async function integRotateApiKeyController(req: Request, res: Response) {
   let logger = _logger.child({
-    module: "v0/admin/validate-api-key",
-    method: "validateApiKeyController",
+    module: "v0/admin/rotate-api-key",
+    method: "rotateApiKeyController",
   });
 
   try {
@@ -41,7 +23,6 @@ export async function integValidateApiKeyController(
       return res.status(401).json({ error: "Unauthorized" });
     }
 
-    // sha-256 hash the token
     if (!token) {
       return res.status(401).json({ error: "Unauthorized" });
     }
@@ -86,73 +67,72 @@ export async function integValidateApiKeyController(
     }
 
     if (!apiKeyData || apiKeyData.length === 0) {
-      return res.status(404).json({ error: "API key not identifiable" });
+      return res.status(404).json({ error: "API key not found" });
     }
 
     const teamId = apiKeyData[0].team_id;
+    const ownerId = apiKeyData[0].owner_id;
 
-    logger = logger.child({
-      teamId,
-    });
+    logger = logger.child({ teamId });
 
     const { data: teamData, error: teamError } = await supabase_service
       .from("teams")
       .select("*")
       .eq("id", teamId)
       .limit(1);
+
     if (teamError) {
       throw teamError;
     }
 
     if (!teamData || teamData.length === 0) {
-      return res.status(404).json({ error: "API key not identifiable" });
+      return res.status(404).json({ error: "API key not found" });
     }
 
     const team = teamData[0];
 
     if (team.referrer_integration !== integration.slug) {
-      return res.status(404).json({ error: "API key not identifiable" });
+      return res.status(404).json({ error: "API key not found" });
     }
 
-    const { data: userTeams, error: userTeamsError } = await supabase_service
-      .from("user_teams")
-      .select("*")
+    const { data: newApiKey, error: newApiKeyError } = await supabase_service
+      .from("api_keys")
+      .insert({
+        name: "Default",
+        team_id: teamId,
+        owner_id: ownerId,
+      })
+      .select()
+      .single();
+
+    if (newApiKeyError) {
+      logger.error("Failed to create new API key", { error: newApiKeyError });
+      return res.status(500).json({ error: "Failed to create new API key" });
+    }
+
+    const { error: deleteError } = await supabase_service
+      .from("api_keys")
+      .delete()
+      .eq("key", normalizedApiKey)
       .eq("team_id", teamId)
-      .limit(1);
-    if (userTeamsError) {
-      throw userTeamsError;
+      .eq("owner_id", ownerId);
+
+    if (deleteError) {
+      logger.error("Failed to delete leaked API key", { error: deleteError });
+      logger.warn("Old API key may still be active", { oldKey: normalizedApiKey });
     }
 
-    if (!userTeams || userTeams.length === 0) {
-      throw new Error("user_teams in invalid state");
-    }
-
-    const userId = userTeams[0].user_id;
-
-    const { data: userData, error: userError } = await supabase_service
-      .from("users")
-      .select("*")
-      .eq("id", userId)
-      .limit(1);
-    if (userError) {
-      throw userError;
-    }
-
-    if (!userData || userData.length === 0) {
-      throw new Error("users in invalid state");
-    }
-
-    const user = userData[0];
-
-    const externalUserId = extractExternalUserId(user.email, integration.slug);
+    logger.info("Rotated API key", { teamId });
 
     return res.status(200).json({
-      teamName: team.name,
-      email: user.email,
-      ...(externalUserId && { externalUserId }),
+      apiKey: apiKeyToFcApiKey(newApiKey.key),
     });
   } catch (error) {
-    logger.error("Error validating API key", { error });
-    return res.status(500).json({ error: "Internal server error" });
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ error: error.message });
+    } else {
+      logger.error("Failed to rotate API key", { error });
+      return res.status(500).json({ error: "Internal server error" });
+    }
   }
 }
