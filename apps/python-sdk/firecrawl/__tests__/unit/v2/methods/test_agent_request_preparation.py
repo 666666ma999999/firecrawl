@@ -197,3 +197,30 @@ class TestAgentRequestPreparation:
         
         assert "strictConstrainToURLs" not in data
 
+    def test_request_with_invalid_schema_type_string(self):
+        """Test that invalid schema types raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid schema type"):
+            _prepare_agent_request(
+                None,
+                prompt="Test prompt",
+                schema="invalid_string_schema"
+            )
+
+    def test_request_with_invalid_schema_type_int(self):
+        """Test that invalid schema types raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid schema type"):
+            _prepare_agent_request(
+                None,
+                prompt="Test prompt",
+                schema=123
+            )
+
+    def test_request_with_invalid_schema_type_list(self):
+        """Test that invalid schema types raise ValueError."""
+        with pytest.raises(ValueError, match="Invalid schema type"):
+            _prepare_agent_request(
+                None,
+                prompt="Test prompt",
+                schema=["not", "a", "valid", "schema"]
+            )
+

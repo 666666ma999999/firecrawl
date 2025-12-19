@@ -23,6 +23,11 @@ def _prepare_agent_request(
         normalized_schema = _normalize_schema(schema)
         if normalized_schema is not None:
             body["schema"] = normalized_schema
+        else:
+            raise ValueError(
+                f"Invalid schema type: {type(schema).__name__}. "
+                "Schema must be a dict, Pydantic BaseModel class, or Pydantic model instance."
+            )
     if integration is not None and str(integration).strip():
         body["integration"] = str(integration).strip()
     if max_credits is not None and max_credits > 0:
