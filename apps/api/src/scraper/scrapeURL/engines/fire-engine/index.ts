@@ -488,6 +488,7 @@ export async function scrapeURLWithFireEnginePlaywright(
         : {}),
 
       proxyUsed: response.usedMobileProxy ? "stealth" : "basic",
+      youtubeTranscriptContent: response.youtubeTranscriptContent,
       timezone: response.timezone,
     };
   });
