@@ -6,6 +6,7 @@ import {
   type Document,
   type CrawlOptions,
   type PaginationConfig,
+  JobTimeoutError,
 } from "../types";
 import { HttpClient } from "../utils/httpClient";
 import { ensureValidScrapeOptions } from "../utils/validation";
@@ -114,12 +115,22 @@ export async function cancelCrawl(http: HttpClient, jobId: string): Promise<bool
 
 export async function waitForCrawlCompletion(http: HttpClient, jobId: string, pollInterval = 2, timeout?: number): Promise<CrawlJob> {
   const start = Date.now();
+  
   while (true) {
-    const status = await getCrawlStatus(http, jobId);
-    if (["completed", "failed", "cancelled"].includes(status.status)) return status;
-    if (timeout != null && Date.now() - start > timeout * 1000) {
-      throw new Error(`Crawl job ${jobId} did not complete within ${timeout} seconds`);
+    try {
+      const status = await getCrawlStatus(http, jobId);
+      
+      if (["completed", "failed", "cancelled"].includes(status.status)) {
+        return status;
+      }
+    } catch (err: any) {
+      // Retry after error, could be network issue, etc
     }
+
+    if (timeout != null && Date.now() - start > timeout * 1000) {
+      throw new JobTimeoutError(jobId, timeout, 'crawl');
+    }
+    
     await new Promise((r) => setTimeout(r, Math.max(1000, pollInterval * 1000)));
   }
 }

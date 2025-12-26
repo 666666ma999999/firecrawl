@@ -645,6 +645,22 @@ export class SdkError extends Error {
   }
 }
 
+export class JobTimeoutError extends SdkError {
+  jobId: string;
+  timeoutSeconds: number;
+  constructor(jobId: string, timeoutSeconds: number, jobType: 'batch' | 'crawl' = 'batch') {
+    const jobTypeLabel = jobType === 'batch' ? 'batch scrape' : 'crawl';
+    super(
+      `${jobTypeLabel.charAt(0).toUpperCase() + jobTypeLabel.slice(1)} job ${jobId} did not complete within ${timeoutSeconds} seconds`,
+      undefined,
+      'JOB_TIMEOUT'
+    );
+    this.name = 'JobTimeoutError';
+    this.jobId = jobId;
+    this.timeoutSeconds = timeoutSeconds;
+  }
+}
+
 export interface QueueStatusResponse {
   success: boolean;
   jobsInQueue: number;
