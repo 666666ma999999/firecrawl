@@ -128,16 +128,16 @@ export async function waitForBatchCompletion(http: HttpClient, jobId: string, po
     } catch (err: any) {
       // Don't retry on permanent errors (4xx) - re-throw immediately with jobId context
       if (!isRetryableError(err)) {
-        // Wrap error to include jobId for better debugging
+        // Create new error with jobId for better debugging (non-retryable errors like 404)
         if (err instanceof SdkError) {
-          const wrappedError = new SdkError(
+          const errorWithJobId = new SdkError(
             err.message,
             err.status,
             err.code,
             err.details,
             jobId
           );
-          throw wrappedError;
+          throw errorWithJobId;
         }
         throw err;
       }
