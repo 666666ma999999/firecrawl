@@ -5,7 +5,7 @@ import {
   HAS_SEARCH,
   TEST_PRODUCTION,
 } from "../lib";
-import { search, idmux, Identity } from "./lib";
+import { search, searchWithCredits, idmux, Identity } from "./lib";
 
 let identity: Identity;
 
@@ -211,6 +211,54 @@ describeIf(TEST_PRODUCTION || HAS_SEARCH || HAS_PROXY)("Search tests", () => {
       );
       expect(res.web).toBeDefined();
       expect(res.web?.length).toBeGreaterThan(0);
+    },
+    60000,
+  );
+
+  it.concurrent(
+    "creditsUsed includes scrape costs when scrapeOptions are provided",
+    async () => {
+      const res = await searchWithCredits(
+        {
+          query: "firecrawl.dev",
+          limit: 2,
+          scrapeOptions: {
+            formats: ["markdown"],
+          },
+          timeout: 120000,
+        },
+        identity,
+      );
+
+      // creditsUsed should include both search credits (2 per 10 results) and scrape credits
+      // With 2 results: search credits = ceil(2/10) * 2 = 2, plus scrape credits (1 per page minimum)
+      // So total should be at least 2 (search) + 2 (scrapes) = 4
+      expect(res.creditsUsed).toBeDefined();
+      expect(res.creditsUsed).toBeGreaterThanOrEqual(4);
+
+      // Verify we got scraped content
+      for (const doc of res.data.web ?? []) {
+        expect(doc.markdown).toBeDefined();
+      }
+    },
+    125000,
+  );
+
+  it.concurrent(
+    "creditsUsed only includes search costs when no scrapeOptions",
+    async () => {
+      const res = await searchWithCredits(
+        {
+          query: "firecrawl",
+          limit: 5,
+        },
+        identity,
+      );
+
+      // Without scraping, creditsUsed should only be search credits (2 per 10 results)
+      // With up to 5 results: ceil(5/10) * 2 = 2
+      expect(res.creditsUsed).toBeDefined();
+      expect(res.creditsUsed).toBe(2);
     },
     60000,
   );

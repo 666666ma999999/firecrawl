@@ -656,10 +656,19 @@ export async function searchController(
           });
         }
 
-        // Calculate search credits only - scrape jobs bill themselves
+        // Calculate search credits (2 credits per 10 results)
         const creditsPerTenResults = isZDR ? 10 : 2;
-        credits_billed =
+        const searchCredits =
           Math.ceil(totalResultsCount / 10) * creditsPerTenResults;
+
+        // Sum up scrape credits from each scraped document
+        const scrapeCredits = allDocsWithCostTracking.reduce(
+          (acc, item) => acc + (item.document.metadata?.creditsUsed ?? 0),
+          0,
+        );
+
+        // Total credits = search credits + scrape credits
+        credits_billed = searchCredits + scrapeCredits;
 
         // Update response with scraped data
         Object.assign(searchResponse, scrapedResponse);

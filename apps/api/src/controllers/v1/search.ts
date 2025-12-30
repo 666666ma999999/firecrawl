@@ -375,8 +375,17 @@ export async function searchController(
         responseData.data = filteredDocs;
       }
 
-      // Calculate search credits only - scrape jobs bill themselves
-      credits_billed = Math.ceil(responseData.data.length / 10) * 2;
+      // Calculate search credits (2 credits per 10 results)
+      const searchCredits = Math.ceil(responseData.data.length / 10) * 2;
+
+      // Sum up scrape credits from each scraped document
+      const scrapeCredits = docsWithCostTracking.reduce(
+        (acc, item) => acc + (item.document.metadata?.creditsUsed ?? 0),
+        0,
+      );
+
+      // Total credits = search credits + scrape credits
+      credits_billed = searchCredits + scrapeCredits;
 
       allDocsWithCostTracking = docsWithCostTracking;
     }

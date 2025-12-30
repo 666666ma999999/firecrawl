@@ -383,6 +383,15 @@ export async function search(
   return raw.body.data;
 }
 
+export async function searchWithCredits(
+  body: SearchRequestInput,
+  identity: Identity,
+): Promise<{ data: SearchV2Response; creditsUsed: number }> {
+  const raw = await searchRaw(body, identity);
+  expectSearchToSucceed(raw);
+  return { data: raw.body.data, creditsUsed: raw.body.creditsUsed };
+}
+
 // =========================================
 // Billing API
 // =========================================
