@@ -335,9 +335,6 @@ export async function searchController(
         title: r.title,
         description: r.description,
       })) as Document[];
-      // Calculate search credits (2 credits per 10 results)
-      const searchCredits = Math.ceil(responseData.data.length / 10) * 2;
-      credits_billed = searchCredits;
     } else {
       logger.info("Scraping search results");
       const scrapePromises = searchResults.map(result =>
@@ -380,37 +377,35 @@ export async function searchController(
         responseData.data = filteredDocs;
       }
 
-      // Calculate search credits (2 credits per 10 results)
-      const searchCredits = Math.ceil(responseData.data.length / 10) * 2;
-
-      // Sum up scrape credits from each scraped document
-      const scrapeCredits = docsWithCostTracking.reduce(
-        (acc, item) => acc + (item.document.metadata?.creditsUsed ?? 0),
-        0,
-      );
-
-      // Total credits for response = search credits + scrape credits
-      // Note: Only search credits are billed here; scrape jobs bill themselves
-      credits_billed = searchCredits + scrapeCredits;
-
       allDocsWithCostTracking = docsWithCostTracking;
     }
 
-    // Bill team - use search credits only when scraping (scrape jobs bill themselves)
-    // When not scraping, credits_billed equals search credits
-    const creditsToBill = scrapeful
-      ? Math.ceil(responseData.data.length / 10) * 2 // Only search credits
-      : credits_billed;
+    // Calculate search credits once (2 credits per 10 results)
+    const searchCredits = Math.ceil(responseData.data.length / 10) * 2;
 
+    if (scrapeful && allDocsWithCostTracking) {
+      // Sum up scrape credits from each scraped document
+      const scrapeCredits = allDocsWithCostTracking.reduce(
+        (acc, item) => acc + (item.document.metadata?.creditsUsed ?? 0),
+        0,
+      );
+      // Total credits for response = search credits + scrape credits
+      // Note: Only search credits are billed here; scrape jobs bill themselves
+      credits_billed = searchCredits + scrapeCredits;
+    } else {
+      credits_billed = searchCredits;
+    }
+
+    // Bill team for search credits only - scrape jobs handle their own billing
     if (!isSearchPreview && searchResults.length > 0) {
       billTeam(
         req.auth.team_id,
         req.acuc?.sub_id ?? undefined,
-        creditsToBill,
+        searchCredits,
         req.acuc?.api_key_id ?? null,
       ).catch(error => {
         logger.error(
-          `Failed to bill team ${req.auth.team_id} for ${creditsToBill} credits: ${error}`,
+          `Failed to bill team ${req.auth.team_id} for ${searchCredits} credits: ${error}`,
         );
       });
     }

@@ -224,6 +224,8 @@ describeIf(TEST_PRODUCTION || HAS_SEARCH || HAS_PROXY)("Search tests", () => {
           limit: 2,
           scrapeOptions: {
             formats: ["markdown"],
+            proxy: "basic",
+            parsers: [],
           },
           timeout: 120000,
         },
@@ -231,10 +233,10 @@ describeIf(TEST_PRODUCTION || HAS_SEARCH || HAS_PROXY)("Search tests", () => {
       );
 
       // creditsUsed should include both search credits (2 per 10 results) and scrape credits
-      // With 2 results: search credits = ceil(2/10) * 2 = 2, plus scrape credits (1 per page minimum)
-      // So total should be at least 2 (search) + 2 (scrapes) = 4
+      // With 2 results: search credits = ceil(2/10) * 2 = 2, plus scrape credits (1 per page with basic proxy and no parsers)
+      // So total should be exactly 2 (search) + 2 (scrapes) = 4
       expect(res.creditsUsed).toBeDefined();
-      expect(res.creditsUsed).toBeGreaterThanOrEqual(4);
+      expect(res.creditsUsed).toBe(4);
 
       // Verify we got scraped content
       for (const doc of res.data.web ?? []) {
