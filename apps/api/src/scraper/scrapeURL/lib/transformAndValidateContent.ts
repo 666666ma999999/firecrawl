@@ -29,7 +29,7 @@ export async function transformAndValidateContent(
   markdown: string;
   usedOnlyMainContent: boolean;
 }> {
-  const useOnlyMainContent = options.onlyMainContent ?? true;
+  const useOnlyMainContent = options.onlyMainContent;
 
   // Transform HTML and convert to markdown
   let transformedHtml = await htmlTransform(html, url, {
