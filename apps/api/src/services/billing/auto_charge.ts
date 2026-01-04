@@ -358,13 +358,13 @@ async function _autoChargeScale(
               remainingCredits:
                 Number(
                   updatedChunk?.remaining_credits ?? chunk.remaining_credits,
-                ) + price.credits,
+                ) + Number(price.credits),
               chunk: {
                 ...(updatedChunk ?? chunk),
                 remaining_credits:
                   Number(
                     updatedChunk?.remaining_credits ?? chunk.remaining_credits,
-                  ) + price.credits,
+                  ) + Number(price.credits),
               },
             };
           }
