@@ -50,6 +50,9 @@ const configSchema = z.object({
   NUQ_DATABASE_URL_LISTEN: z.string().optional(),
   NUQ_RABBITMQ_URL: z.string().optional(),
 
+  // FoundationDB
+  FDB_CLUSTER_FILE: z.string().optional(),
+
   // Supabase
   SUPABASE_URL: z.string().optional(),
   SUPABASE_ANON_TOKEN: z.string().optional(),
