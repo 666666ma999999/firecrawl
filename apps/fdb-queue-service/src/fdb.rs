@@ -471,6 +471,23 @@ impl FdbQueue {
         Ok(None)
     }
 
+    /// Release a claimed job without completing it.
+    /// This deletes all claims for the job but leaves the job in the queue.
+    /// Used when a worker claims a job but can't process it (e.g., crawl concurrency limit).
+    ///
+    /// The job_id is the ID of the job to release.
+    pub async fn release_job(&self, job_id: &str) -> Result<(), FdbError> {
+        let claims_prefix = Self::build_claims_prefix(job_id);
+        let claims_end = Self::end_key(&claims_prefix);
+
+        let trx = self.db.create_trx()?;
+        trx.clear_range(&claims_prefix, &claims_end);
+        trx.commit().await?;
+
+        tracing::debug!(job_id = job_id, "Released job claims");
+        Ok(())
+    }
+
     /// Complete a job after successful processing.
     /// This deletes the job from the queue and cleans up all claims.
     ///

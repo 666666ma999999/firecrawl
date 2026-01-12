@@ -207,19 +207,15 @@ async function popNextJobWithBlocking(
     const canRun = await crawlConcurrencyChecker(result.job.crawlId);
     if (!canRun) {
       // We claimed this job but can't run it due to crawl concurrency.
-      // We need to complete it (remove our claim) and try again with this crawl blocked.
-      // Note: This is safe because we're the only ones who claimed this job.
-      // We'll "abandon" our claim by not completing, and the janitor will clean it up.
-      // Actually, we should just try again with the blocked list - the service
-      // will skip jobs from blocked crawls.
-      logger.debug("Skipping claimed job due to crawl concurrency limit", {
+      // Release the claim so other workers (or us later) can pick it up.
+      logger.debug("Releasing claimed job due to crawl concurrency limit", {
         teamId,
         jobId: result.job.id,
         crawlId: result.job.crawlId,
       });
 
-      // The job stays claimed by us but we won't process it.
-      // This is suboptimal but safe - the claim will be cleaned up by janitor.
+      await releaseJob(result.job.id);
+
       // Try again with this crawl blocked
       if (!blockedCrawlIds.includes(result.job.crawlId)) {
         return popNextJobWithBlocking(
@@ -249,6 +245,17 @@ export async function completeJob(queueKey: string): Promise<boolean> {
     { queueKey },
   );
   return result.success;
+}
+
+/**
+ * Release a claimed job without completing it.
+ * This deletes all claims for the job but leaves the job in the queue.
+ * Used when a worker claims a job but can't process it (e.g., crawl concurrency limit).
+ *
+ * @param jobId The job ID to release claims for
+ */
+async function releaseJob(jobId: string): Promise<void> {
+  await httpRequest<{ success: boolean }>("POST", "/queue/release", { jobId });
 }
 
 export async function getTeamQueueCount(teamId: string): Promise<number> {

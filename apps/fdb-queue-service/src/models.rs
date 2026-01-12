@@ -72,6 +72,13 @@ pub struct CompleteJobRequest {
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct ReleaseJobRequest {
+    /// The job ID to release claims for
+    pub job_id: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct PushActiveJobRequest {
     pub team_id: String,
     pub job_id: String,

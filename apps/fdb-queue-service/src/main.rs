@@ -65,6 +65,7 @@ async fn async_main(_network: foundationdb::api::NetworkAutoStop) -> Result<(), 
         .route("/queue/push", post(handlers::push_job))
         .route("/queue/pop/:team_id", post(handlers::pop_next_job))
         .route("/queue/complete", post(handlers::complete_job))
+        .route("/queue/release", post(handlers::release_job))
         .route("/queue/count/team/:team_id", get(handlers::get_team_queue_count))
         .route("/queue/count/crawl/:crawl_id", get(handlers::get_crawl_queue_count))
         .route("/queue/jobs/team/:team_id", get(handlers::get_team_queued_job_ids))

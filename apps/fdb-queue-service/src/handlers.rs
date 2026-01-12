@@ -76,6 +76,17 @@ pub async fn complete_job(
     Ok(Json(SuccessResponse { success }))
 }
 
+pub async fn release_job(
+    State(state): State<AppState>,
+    Json(req): Json<ReleaseJobRequest>,
+) -> ApiResult<SuccessResponse> {
+    state.fdb.release_job(&req.job_id)
+        .await
+        .map_err(internal_error)?;
+
+    Ok(Json(SuccessResponse { success: true }))
+}
+
 pub async fn get_team_queue_count(
     State(state): State<AppState>,
     Path(team_id): Path<String>,
