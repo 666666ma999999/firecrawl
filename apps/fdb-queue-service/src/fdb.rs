@@ -166,17 +166,24 @@ impl FdbQueue {
         key
     }
 
-    /// Build a claim key with versionstamp placeholder.
-    /// Key format: CLAIMS_PREFIX + job_id_len(4) + job_id + versionstamp(10)
-    /// Returns (key_with_placeholder, offset_of_versionstamp)
-    fn build_claim_key_with_versionstamp(job_id: &str) -> (Vec<u8>, usize) {
+    /// Build a claim key with versionstamp placeholder for SetVersionstampedKey.
+    ///
+    /// Key format sent to FDB:
+    ///   CLAIMS_PREFIX + job_id_len(4) + job_id + versionstamp_placeholder(10) + offset(4)
+    ///
+    /// After commit, FDB replaces the placeholder with actual versionstamp and removes
+    /// the 4-byte offset suffix, resulting in:
+    ///   CLAIMS_PREFIX + job_id_len(4) + job_id + versionstamp(10)
+    fn build_claim_key_with_versionstamp(job_id: &str) -> Vec<u8> {
         let mut key = CLAIMS_PREFIX.to_vec();
         let job_bytes = job_id.as_bytes();
         key.extend_from_slice(&(job_bytes.len() as u32).to_be_bytes());
         key.extend_from_slice(job_bytes);
         let versionstamp_offset = key.len();
         key.extend_from_slice(&VERSIONSTAMP_PLACEHOLDER);
-        (key, versionstamp_offset)
+        // FDB requires 4-byte little-endian offset at end of key for SetVersionstampedKey
+        key.extend_from_slice(&(versionstamp_offset as u32).to_le_bytes());
+        key
     }
 
     /// Build prefix for all claims of a job.
@@ -403,7 +410,7 @@ impl FdbQueue {
 
             // Submit our claim with versionstamp (CANNOT conflict!)
             let claim_trx = self.db.create_trx()?;
-            let (claim_key, _versionstamp_offset) = Self::build_claim_key_with_versionstamp(&job.id);
+            let claim_key = Self::build_claim_key_with_versionstamp(&job.id);
 
             // Also store the queue_key in the claim value so we can find the job later
             let claim_value = serde_json::json!({
