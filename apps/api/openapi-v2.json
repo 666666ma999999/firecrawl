@@ -3447,74 +3447,653 @@
         ]
       },
       "ScrapeResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "warning": {
+                "type": "string"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "title": {
+                    "type": "string"
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "url": {
+                    "type": "string"
+                  },
+                  "markdown": {
+                    "type": "string"
+                  },
+                  "html": {
+                    "type": "string"
+                  },
+                  "rawHtml": {
+                    "type": "string"
+                  },
+                  "links": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "images": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "screenshot": {
+                    "type": "string"
+                  },
+                  "extract": {},
+                  "json": {},
+                  "summary": {
+                    "type": "string"
+                  },
+                  "warning": {
+                    "type": "string"
+                  },
+                  "metadata": {
+                    "type": "object",
+                    "properties": {
+                      "title": {
+                        "type": "string"
+                      },
+                      "description": {
+                        "type": "string"
+                      },
+                      "language": {
+                        "type": "string"
+                      },
+                      "url": {
+                        "type": "string"
+                      },
+                      "sourceURL": {
+                        "type": "string"
+                      },
+                      "statusCode": {
+                        "type": "number"
+                      },
+                      "error": {
+                        "type": "string"
+                      }
+                    },
+                    "required": ["statusCode"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["metadata"],
+                "additionalProperties": false
+              },
+              "scrape_id": {
+                "type": "string"
+              }
+            },
+            "required": ["success", "data"],
+            "additionalProperties": false
           }
-        },
-        "required": ["success"],
-        "additionalProperties": false
+        ]
       },
       "CrawlStatusResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "status": {
+                "type": "string",
+                "enum": ["scraping", "completed", "failed", "cancelled"]
+              },
+              "completed": {
+                "type": "number"
+              },
+              "total": {
+                "type": "number"
+              },
+              "creditsUsed": {
+                "type": "number"
+              },
+              "expiresAt": {
+                "type": "string"
+              },
+              "next": {
+                "type": "string"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "markdown": {
+                      "type": "string"
+                    },
+                    "html": {
+                      "type": "string"
+                    },
+                    "rawHtml": {
+                      "type": "string"
+                    },
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "screenshot": {
+                      "type": "string"
+                    },
+                    "extract": {},
+                    "json": {},
+                    "summary": {
+                      "type": "string"
+                    },
+                    "warning": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "language": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "sourceURL": {
+                          "type": "string"
+                        },
+                        "statusCode": {
+                          "type": "number"
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["statusCode"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["metadata"],
+                  "additionalProperties": false
+                }
+              },
+              "warning": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "success",
+              "status",
+              "completed",
+              "total",
+              "creditsUsed",
+              "expiresAt",
+              "data"
+            ],
+            "additionalProperties": false
           }
-        },
-        "required": ["success"],
-        "additionalProperties": false
+        ]
       },
       "CrawlErrorsResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "errors": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "timestamp": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "code": {
+                      "type": "string"
+                    },
+                    "error": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["id", "url", "error"],
+                  "additionalProperties": false
+                }
+              },
+              "robotsBlocked": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": ["errors", "robotsBlocked"],
+            "additionalProperties": false
           }
-        },
-        "required": ["success"],
-        "additionalProperties": false
+        ]
       },
       "OngoingCrawlsResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "crawls": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "string"
+                    },
+                    "teamId": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "created_at": {
+                      "type": "string"
+                    },
+                    "options": {}
+                  },
+                  "required": ["id", "teamId", "url", "created_at", "options"],
+                  "additionalProperties": false
+                }
+              }
+            },
+            "required": ["success", "crawls"],
+            "additionalProperties": false
           }
-        },
-        "required": ["success"],
-        "additionalProperties": false
+        ]
       },
       "MapResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "links": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    },
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["url"],
+                  "additionalProperties": false
+                }
+              },
+              "warning": {
+                "type": "string"
+              }
+            },
+            "required": ["success"],
+            "additionalProperties": false
           }
-        },
-        "required": ["success"],
-        "additionalProperties": false
+        ]
       },
       "SearchResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "warning": {
+                "type": "string"
+              },
+              "data": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "title": {
+                      "type": "string"
+                    },
+                    "description": {
+                      "type": "string"
+                    },
+                    "url": {
+                      "type": "string"
+                    },
+                    "markdown": {
+                      "type": "string"
+                    },
+                    "html": {
+                      "type": "string"
+                    },
+                    "rawHtml": {
+                      "type": "string"
+                    },
+                    "links": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "images": {
+                      "type": "array",
+                      "items": {
+                        "type": "string"
+                      }
+                    },
+                    "screenshot": {
+                      "type": "string"
+                    },
+                    "extract": {},
+                    "json": {},
+                    "summary": {
+                      "type": "string"
+                    },
+                    "warning": {
+                      "type": "string"
+                    },
+                    "metadata": {
+                      "type": "object",
+                      "properties": {
+                        "title": {
+                          "type": "string"
+                        },
+                        "description": {
+                          "type": "string"
+                        },
+                        "language": {
+                          "type": "string"
+                        },
+                        "url": {
+                          "type": "string"
+                        },
+                        "sourceURL": {
+                          "type": "string"
+                        },
+                        "statusCode": {
+                          "type": "number"
+                        },
+                        "error": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["statusCode"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["metadata"],
+                  "additionalProperties": false
+                }
+              },
+              "creditsUsed": {
+                "type": "number"
+              }
+            },
+            "required": ["success", "data", "creditsUsed"],
+            "additionalProperties": false
           }
-        },
-        "required": ["success"],
-        "additionalProperties": false
+        ]
       },
       "ExtractResponse": {
-        "type": "object",
-        "properties": {
-          "success": {
-            "type": "boolean"
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": false
+              },
+              "code": {
+                "type": "string"
+              },
+              "error": {
+                "type": "string"
+              },
+              "details": {}
+            },
+            "required": ["success", "error"],
+            "additionalProperties": false
+          },
+          {
+            "type": "object",
+            "properties": {
+              "success": {
+                "type": "boolean",
+                "const": true
+              },
+              "error": {
+                "type": "string"
+              },
+              "data": {},
+              "scrape_id": {
+                "type": "string"
+              },
+              "id": {
+                "type": "string"
+              },
+              "warning": {
+                "type": "string"
+              },
+              "urlTrace": {
+                "type": "array",
+                "items": {
+                  "type": "object",
+                  "properties": {
+                    "url": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string",
+                      "enum": ["mapped", "scraped", "error"]
+                    },
+                    "timing": {
+                      "type": "object",
+                      "properties": {
+                        "discoveredAt": {
+                          "type": "string"
+                        },
+                        "scrapedAt": {
+                          "type": "string"
+                        },
+                        "completedAt": {
+                          "type": "string"
+                        }
+                      },
+                      "required": ["discoveredAt"],
+                      "additionalProperties": false
+                    },
+                    "error": {
+                      "type": "string"
+                    },
+                    "warning": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["url", "status", "timing"],
+                  "additionalProperties": false
+                }
+              },
+              "sources": {
+                "type": "object",
+                "propertyNames": {
+                  "type": "string"
+                },
+                "additionalProperties": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "tokensUsed": {
+                "type": "number"
+              },
+              "creditsUsed": {
+                "type": "number"
+              }
+            },
+            "required": ["success"],
+            "additionalProperties": false
           }
-        },
-        "required": ["success"],
-        "additionalProperties": false
+        ]
       }
     }
   },

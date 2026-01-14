@@ -76,7 +76,7 @@ async function main() {
   const outPath = path.join(apiRoot, "openapi-v2.json");
 
   // Request body schemas come from the actual Zod validators used at runtime.
-  // Response schemas are intentionally loose (many are TS-only types today).
+  // Response schemas reflect the actual shapes returned by controllers.
   const ErrorResponseSchema = z.object({
     success: z.literal(false),
     code: z.string().optional(),
@@ -90,7 +90,152 @@ async function main() {
     url: z.string(),
   });
 
-  const SimpleSuccessSchema = z.object({ success: z.boolean() });
+  // Document schema (simplified for OpenAPI - key fields)
+  const DocumentSchema = z.object({
+    title: z.string().optional(),
+    description: z.string().optional(),
+    url: z.string().optional(),
+    markdown: z.string().optional(),
+    html: z.string().optional(),
+    rawHtml: z.string().optional(),
+    links: z.array(z.string()).optional(),
+    images: z.array(z.string()).optional(),
+    screenshot: z.string().optional(),
+    extract: z.any().optional(),
+    json: z.any().optional(),
+    summary: z.string().optional(),
+    warning: z.string().optional(),
+    metadata: z.object({
+      title: z.string().optional(),
+      description: z.string().optional(),
+      language: z.string().optional(),
+      url: z.string().optional(),
+      sourceURL: z.string().optional(),
+      statusCode: z.number(),
+      error: z.string().optional(),
+    }),
+  });
+
+  // ScrapeResponse
+  const ScrapeResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      warning: z.string().optional(),
+      data: DocumentSchema,
+      scrape_id: z.string().optional(),
+    }),
+  ]);
+
+  // CrawlStatusResponse
+  const CrawlStatusResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      status: z.enum(["scraping", "completed", "failed", "cancelled"]),
+      completed: z.number(),
+      total: z.number(),
+      creditsUsed: z.number(),
+      expiresAt: z.string(),
+      next: z.string().optional(),
+      data: z.array(DocumentSchema),
+      warning: z.string().optional(),
+    }),
+  ]);
+
+  // CrawlErrorsResponse
+  const CrawlErrorsResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      errors: z.array(
+        z.object({
+          id: z.string(),
+          timestamp: z.string().optional(),
+          url: z.string(),
+          code: z.string().optional(),
+          error: z.string(),
+        }),
+      ),
+      robotsBlocked: z.array(z.string()),
+    }),
+  ]);
+
+  // OngoingCrawlsResponse
+  const OngoingCrawlsResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      crawls: z.array(
+        z.object({
+          id: z.string(),
+          teamId: z.string(),
+          url: z.string(),
+          created_at: z.string(),
+          options: z.any(),
+        }),
+      ),
+    }),
+  ]);
+
+  // MapResponse
+  const MapResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      links: z
+        .array(
+          z.object({
+            url: z.string(),
+            title: z.string().optional(),
+            description: z.string().optional(),
+          }),
+        )
+        .optional(),
+      warning: z.string().optional(),
+    }),
+  ]);
+
+  // SearchResponse
+  const SearchResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      warning: z.string().optional(),
+      data: z.array(DocumentSchema),
+      creditsUsed: z.number(),
+    }),
+  ]);
+
+  // ExtractResponse
+  const ExtractResponseSchema = z.union([
+    ErrorResponseSchema,
+    z.object({
+      success: z.literal(true),
+      error: z.string().optional(),
+      data: z.any().optional(),
+      scrape_id: z.string().optional(),
+      id: z.string().optional(),
+      warning: z.string().optional(),
+      urlTrace: z
+        .array(
+          z.object({
+            url: z.string(),
+            status: z.enum(["mapped", "scraped", "error"]),
+            timing: z.object({
+              discoveredAt: z.string(),
+              scrapedAt: z.string().optional(),
+              completedAt: z.string().optional(),
+            }),
+            error: z.string().optional(),
+            warning: z.string().optional(),
+          }),
+        )
+        .optional(),
+      sources: z.record(z.string(), z.array(z.string())).optional(),
+      tokensUsed: z.number().optional(),
+      creditsUsed: z.number().optional(),
+    }),
+  ]);
 
   const schemas: Record<string, any> = {
     // Requests
@@ -143,13 +288,16 @@ async function main() {
       "output",
     ),
 
-    ScrapeResponse: zodToJsonSchema(SimpleSuccessSchema, "output"),
-    CrawlStatusResponse: zodToJsonSchema(SimpleSuccessSchema, "output"),
-    CrawlErrorsResponse: zodToJsonSchema(SimpleSuccessSchema, "output"),
-    OngoingCrawlsResponse: zodToJsonSchema(SimpleSuccessSchema, "output"),
-    MapResponse: zodToJsonSchema(SimpleSuccessSchema, "output"),
-    SearchResponse: zodToJsonSchema(SimpleSuccessSchema, "output"),
-    ExtractResponse: zodToJsonSchema(SimpleSuccessSchema, "output"),
+    ScrapeResponse: zodToJsonSchema(ScrapeResponseSchema, "output"),
+    CrawlStatusResponse: zodToJsonSchema(CrawlStatusResponseSchema, "output"),
+    CrawlErrorsResponse: zodToJsonSchema(CrawlErrorsResponseSchema, "output"),
+    OngoingCrawlsResponse: zodToJsonSchema(
+      OngoingCrawlsResponseSchema,
+      "output",
+    ),
+    MapResponse: zodToJsonSchema(MapResponseSchema, "output"),
+    SearchResponse: zodToJsonSchema(SearchResponseSchema, "output"),
+    ExtractResponse: zodToJsonSchema(ExtractResponseSchema, "output"),
   };
 
   const doc: OpenAPIV3_1 = {
