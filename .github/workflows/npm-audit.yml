@@ -99,9 +99,9 @@ jobs:
               echo "❌ $name audit failed"
               echo "=========================================="
               if [ -f "/tmp/audit-outputs/${AUDIT_FILES[$name]}" ]; then
-                cat "/tmp/audit-outputs/${AUDIT_FILES[$name]}"
+                # Extract only the summary (from "Found vulnerable advisory paths:" to end)
+                sed -n '/Found vulnerable advisory paths:/,$p' "/tmp/audit-outputs/${AUDIT_FILES[$name]}" | sed 's/\x1b\[[0-9;]*m//g'
               fi
-              echo ""
             fi
           done
 
