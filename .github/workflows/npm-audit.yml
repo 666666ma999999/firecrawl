@@ -22,42 +22,49 @@ jobs:
         id: audit-api
         continue-on-error: true
         run: |
+          set -o pipefail
           pnpm dlx audit-ci@^7 --directory apps/api --config apps/api/audit-ci.jsonc 2>&1 | tee /tmp/audit-outputs/api.txt
 
       - name: Audit Playwright Service Packages
         id: audit-playwright-service
         continue-on-error: true
         run: |
+          set -o pipefail
           pnpm dlx audit-ci@^7 --directory apps/playwright-service-ts --config apps/playwright-service-ts/audit-ci.jsonc 2>&1 | tee /tmp/audit-outputs/playwright-service.txt
 
       - name: Audit JavaScript SDK Packages
         id: audit-js-sdk
         continue-on-error: true
         run: |
+          set -o pipefail
           pnpm dlx audit-ci@^7 --directory apps/js-sdk --config apps/js-sdk/audit-ci.jsonc 2>&1 | tee /tmp/audit-outputs/js-sdk.txt
 
       - name: Audit JavaScript SDK Firecrawl Packages
         id: audit-js-sdk-firecrawl
         continue-on-error: true
         run: |
+          set -o pipefail
           pnpm dlx audit-ci@^7 --directory apps/js-sdk/firecrawl --config apps/js-sdk/firecrawl/audit-ci.jsonc 2>&1 | tee /tmp/audit-outputs/js-sdk-firecrawl.txt
 
       - name: Audit Test Suite Packages
         id: audit-test-suite
         continue-on-error: true
         run: |
+          set -o pipefail
           pnpm dlx audit-ci@^7 --directory apps/test-suite --config apps/test-suite/audit-ci.jsonc 2>&1 | tee /tmp/audit-outputs/test-suite.txt
 
       - name: Audit Ingestion UI Packages
         id: audit-ingestion-ui
         continue-on-error: true
         run: |
+          set -o pipefail
           pnpm dlx audit-ci@^7 --directory apps/ui/ingestion-ui --config apps/ui/ingestion-ui/audit-ci.jsonc 2>&1 | tee /tmp/audit-outputs/ingestion-ui.txt
 
       - name: Audit Test Site Packages
         id: audit-test-site
         continue-on-error: true
         run: |
+          set -o pipefail
           pnpm dlx audit-ci@^7 --directory apps/test-site --config apps/test-site/audit-ci.jsonc 2>&1 | tee /tmp/audit-outputs/test-site.txt
 
       - name: Report audit failures
