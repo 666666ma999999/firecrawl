@@ -499,12 +499,95 @@ export async function searchController(
         });
       }
 
-      // Calculate search credits only - scrape jobs bill themselves
+      // Calculate search credits only
       const creditsPerTenResults = isZDR ? 10 : 2;
-      credits_billed = Math.ceil(totalResultsCount / 10) * creditsPerTenResults;
+      const searchCredits =
+        Math.ceil(totalResultsCount / 10) * creditsPerTenResults;
+      credits_billed = searchCredits;
+
+      // Calculate total scrape credits from all scraped documents
+      const scrapeCredits = allDocsWithCostTracking.reduce(
+        (total, { document }) => {
+          return total + (document.metadata?.creditsUsed ?? 0);
+        },
+        0,
+      );
+
+      // Total credits = search credits + scrape credits (for API response)
+      const totalCredits = searchCredits + scrapeCredits;
 
       // Update response with scraped data
       Object.assign(searchResponse, scrapedResponse);
+
+      // Return early with total credits for scraping case
+      const endTime = new Date().getTime();
+      const timeTakenInSeconds = (endTime - middlewareStartTime) / 1000;
+
+      logger.info("Logging job", {
+        searchCredits,
+        scrapeCredits,
+        totalCredits,
+        time_taken: timeTakenInSeconds,
+      });
+
+      // Log only search credits
+      logSearch(
+        {
+          id: jobId,
+          request_id: agentRequestId ?? jobId,
+          query: req.body.query,
+          is_successful: true,
+          error: undefined,
+          results: searchResponse as any,
+          num_results: totalResultsCount,
+          time_taken: timeTakenInSeconds,
+          team_id: req.auth.team_id,
+          options: req.body,
+          credits_cost: shouldBill ? searchCredits : 0,
+          zeroDataRetention: isZDROrAnon ?? false,
+        },
+        false,
+      );
+
+      // Bill team for search credits only (scrape jobs bill themselves)
+      if (!isSearchPreview) {
+        billTeam(
+          req.auth.team_id,
+          req.acuc?.sub_id ?? undefined,
+          searchCredits,
+          req.acuc?.api_key_id ?? null,
+        ).catch(error => {
+          logger.error(
+            `Failed to bill team ${req.acuc?.sub_id} for ${searchCredits} credits: ${error}`,
+          );
+        });
+      }
+
+      const totalRequestTime = new Date().getTime() - middlewareStartTime;
+      const controllerTime = new Date().getTime() - controllerStartTime;
+
+      logger.info("Request metrics", {
+        version: "v2",
+        jobId,
+        mode: "search",
+        middlewareStartTime,
+        controllerStartTime,
+        middlewareTime,
+        controllerTime,
+        totalRequestTime,
+        searchCredits,
+        scrapeCredits,
+        totalCredits,
+        scrapeful: shouldScrape,
+      });
+
+      // Return total credits (search + scrape) in API response
+      return res.status(200).json({
+        success: true,
+        data: searchResponse,
+        creditsUsed: totalCredits,
+        id: jobId,
+      });
     }
 
     // Bill team for search credits only
