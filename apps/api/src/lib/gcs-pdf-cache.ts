@@ -3,9 +3,6 @@ import { config } from "../config";
 import crypto from "crypto";
 import { storage } from "./gcs-jobs";
 
-const credentials = config.GCS_CREDENTIALS
-  ? JSON.parse(atob(config.GCS_CREDENTIALS))
-  : undefined;
 const PDF_CACHE_PREFIX = "pdf-cache-v2/";
 
 /**
