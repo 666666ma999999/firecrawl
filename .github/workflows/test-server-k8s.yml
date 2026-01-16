@@ -75,8 +75,23 @@ jobs:
             --disable traefik \
             --disable metrics-server
 
-          # Wait for k3s to be ready
-          sudo k3s kubectl wait --for=condition=ready node --all --timeout=60s
+          # Give k3s service time to start
+          sleep 10
+
+          # Wait for k3s to be ready with retry logic
+          for i in {1..6}; do
+            echo "Waiting for k3s nodes (attempt $i/6)..."
+            if sudo k3s kubectl wait --for=condition=ready node --all --timeout=30s 2>/dev/null; then
+              echo "k3s nodes are ready"
+              break
+            else
+              echo "k3s nodes not ready yet, waiting..."
+              sleep 10
+            fi
+          done
+
+          # Final check - fail if still not ready
+          sudo k3s kubectl wait --for=condition=ready node --all --timeout=10s
 
           # Set up kubeconfig for subsequent steps
           mkdir -p ~/.kube
