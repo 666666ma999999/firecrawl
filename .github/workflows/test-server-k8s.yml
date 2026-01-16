@@ -737,8 +737,8 @@ jobs:
           PROXY_SERVER: ${{ matrix.proxy == 'proxy' && secrets.PROXY_SERVER || '' }}
           PROXY_USERNAME: ${{ matrix.proxy == 'proxy' && secrets.PROXY_USERNAME || '' }}
           PROXY_PASSWORD: ${{ matrix.proxy == 'proxy' && secrets.PROXY_PASSWORD || '' }}
-          # For test identity creation
-          IDMUX_URL: ${{ secrets.IDMUX_URL || '' }}
+          # For test identity creation - don't use IDMUX_URL in k8s CI (service not deployed)
+          # Falls back to TEST_API_KEY + TEST_TEAM_ID
           TEST_API_KEY: ${{ secrets.TEST_API_KEY || '' }}
           TEST_TEAM_ID: ${{ secrets.TEST_TEAM_ID || '' }}
           GITHUB_REF_NAME: ${{ github.ref_name }}
