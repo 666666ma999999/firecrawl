@@ -29,8 +29,14 @@ export async function agentStatusController(
     data = await getJobFromGCS(agent.id);
   }
   const model =
-    (agent?.options as { model?: string } | null | undefined)?.model ??
-    "spark-1-pro";
+    (
+      agent?.options as
+        | { model?: "spark-1-pro" | "spark-1-mini" }
+        | null
+        | undefined
+    )?.model === "spark-1-mini"
+      ? "spark-1-mini"
+      : "spark-1-pro";
 
   return res.status(200).json({
     success: true,
