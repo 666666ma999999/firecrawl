@@ -532,6 +532,43 @@ describe("V2 Types Validation", () => {
       );
     });
 
+    it("should accept JSON schema with $schema field (draft 2020-12)", () => {
+      const input: ExtractRequestInput = {
+        urls: ["https://example.com"],
+        schema: {
+          $schema: "https://json-schema.org/draft/2020-12/schema",
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            description: { type: "string" },
+          },
+          required: ["title"],
+        },
+      };
+
+      const result = extractRequestSchema.parse(input);
+      expect(result.urls).toEqual(["https://example.com"]);
+      // Schema should be normalized (additionalProperties removed for OpenAI compatibility)
+      expect(result.schema).toBeDefined();
+    });
+
+    it("should accept JSON schema with $schema field (draft-07)", () => {
+      const input: ExtractRequestInput = {
+        urls: ["https://example.com"],
+        schema: {
+          $schema: "http://json-schema.org/draft-07/schema#",
+          type: "object",
+          properties: {
+            name: { type: "string" },
+          },
+        },
+      };
+
+      const result = extractRequestSchema.parse(input);
+      expect(result.urls).toEqual(["https://example.com"]);
+      expect(result.schema).toBeDefined();
+    });
+
     it("should transform allowExternalLinks when enableWebSearch is true", () => {
       const input: ExtractRequestInput = {
         urls: ["https://example.com"],

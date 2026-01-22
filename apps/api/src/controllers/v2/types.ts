@@ -642,6 +642,15 @@ const ajv = new Ajv();
 const agentAjv = new Ajv();
 addFormats(agentAjv);
 
+// Helper function to strip $schema field before AJV validation
+// AJV by default doesn't support draft 2020-12, but $schema is just metadata
+// about the schema version and doesn't affect the actual validation structure
+function stripSchemaMetadata(schema: any): any {
+  if (!schema || typeof schema !== "object") return schema;
+  const { $schema, ...rest } = schema;
+  return rest;
+}
+
 const extractOptions = z
   .strictObject({
     urls: URL.array()
@@ -656,7 +665,8 @@ const extractOptions = z
         val => {
           if (!val) return true; // Allow undefined schema
           try {
-            const validate = ajv.compile(val);
+            // Strip $schema field before AJV validation since AJV doesn't support draft 2020-12
+            const validate = ajv.compile(stripSchemaMetadata(val));
             return typeof validate === "function";
           } catch (e) {
             return false;
@@ -731,7 +741,8 @@ export const agentRequestSchema = z.strictObject({
     .superRefine((val, ctx) => {
       if (!val) return; // Allow undefined schema
       try {
-        agentAjv.compile(val);
+        // Strip $schema field before AJV validation since AJV doesn't support draft 2020-12
+        agentAjv.compile(stripSchemaMetadata(val));
       } catch (e) {
         const message =
           e instanceof Error
