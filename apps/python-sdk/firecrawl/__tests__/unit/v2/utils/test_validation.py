@@ -1,6 +1,21 @@
 import pytest
-from firecrawl.v2.types import JsonFormat, ScrapeOptions, PDFParser
-from firecrawl.v2.utils.validation import validate_scrape_options, prepare_scrape_options
+from firecrawl.v2.types import (
+    JsonFormat,
+    ScrapeOptions,
+    PDFParser,
+    CrawlRequest,
+    MapOptions,
+    ExtractRequest,
+    SearchRequest,
+    BatchScrapeRequest,
+)
+from firecrawl.v2.utils.validation import (
+    validate_scrape_options,
+    prepare_scrape_options,
+    detect_camel_case_keys,
+    convert_camel_to_snake_keys,
+    CAMEL_TO_SNAKE_MAPPINGS,
+)
 
 
 class TestValidateScrapeOptions:
@@ -309,3 +324,255 @@ class TestPrepareScrapeOptions:
         result = prepare_scrape_options(options)
 
         assert result["parsers"][0]["maxPages"] == 5
+
+
+class TestCamelCaseConversion:
+    """Unit tests for camelCase to snake_case conversion utilities."""
+
+    def test_detect_known_camel_case_keys(self):
+        """Test detection of known camelCase keys."""
+        data = {"includeTags": ["h1"], "onlyMainContent": True}
+        issues = detect_camel_case_keys(data)
+
+        assert len(issues) == 2
+        assert ("includeTags", "include_tags") in issues
+        assert ("onlyMainContent", "only_main_content") in issues
+
+    def test_detect_unknown_camel_case_keys(self):
+        """Test detection of unknown camelCase keys."""
+        data = {"someNewField": "value", "anotherCamelCase": 123}
+        issues = detect_camel_case_keys(data)
+
+        assert len(issues) == 2
+        # Should convert to snake_case even if not in mapping
+        assert ("someNewField", "some_new_field") in issues
+        assert ("anotherCamelCase", "another_camel_case") in issues
+
+    def test_no_camel_case_detected_for_snake_case(self):
+        """Test that snake_case keys are not flagged."""
+        data = {"include_tags": ["h1"], "only_main_content": True}
+        issues = detect_camel_case_keys(data)
+
+        assert len(issues) == 0
+
+    def test_convert_camel_to_snake_keys(self):
+        """Test conversion of camelCase keys to snake_case."""
+        data = {
+            "includeTags": ["h1", "h2"],
+            "onlyMainContent": True,
+            "maxAge": 5000,
+        }
+        result = convert_camel_to_snake_keys(data)
+
+        assert "include_tags" in result
+        assert "only_main_content" in result
+        assert "max_age" in result
+        assert result["include_tags"] == ["h1", "h2"]
+        assert result["only_main_content"] is True
+        assert result["max_age"] == 5000
+
+    def test_convert_nested_camel_to_snake_keys(self):
+        """Test conversion works recursively on nested dicts."""
+        data = {
+            "scrapeOptions": {
+                "includeTags": ["article"],
+                "waitFor": 2000,
+            }
+        }
+        result = convert_camel_to_snake_keys(data)
+
+        assert "scrape_options" in result
+        assert "include_tags" in result["scrape_options"]
+        assert "wait_for" in result["scrape_options"]
+
+    def test_convert_preserves_snake_case_keys(self):
+        """Test that snake_case keys are preserved."""
+        data = {
+            "include_tags": ["h1"],
+            "only_main_content": True,
+            "url": "https://example.com",
+        }
+        result = convert_camel_to_snake_keys(data)
+
+        assert result == data
+
+
+class TestScrapeOptionsCamelCaseAlias:
+    """Test that ScrapeOptions accepts camelCase keys."""
+
+    def test_scrape_options_camel_case_keys(self):
+        """Test ScrapeOptions accepts camelCase keys and converts them."""
+        options = ScrapeOptions(**{
+            "includeTags": ["h1", "h2"],
+            "excludeTags": ["nav"],
+            "onlyMainContent": False,
+            "waitFor": 2000,
+            "skipTlsVerification": True,
+            "removeBase64Images": False,
+            "fastMode": True,
+            "blockAds": True,
+            "storeInCache": False,
+            "maxAge": 5000,
+        })
+
+        assert options.include_tags == ["h1", "h2"]
+        assert options.exclude_tags == ["nav"]
+        assert options.only_main_content is False
+        assert options.wait_for == 2000
+        assert options.skip_tls_verification is True
+        assert options.remove_base64_images is False
+        assert options.fast_mode is True
+        assert options.block_ads is True
+        assert options.store_in_cache is False
+        assert options.max_age == 5000
+
+    def test_scrape_options_mixed_case_keys(self):
+        """Test ScrapeOptions accepts mixed snake_case and camelCase."""
+        options = ScrapeOptions(**{
+            "include_tags": ["h1"],
+            "onlyMainContent": True,
+            "wait_for": 1000,
+            "maxAge": 3000,
+        })
+
+        assert options.include_tags == ["h1"]
+        assert options.only_main_content is True
+        assert options.wait_for == 1000
+        assert options.max_age == 3000
+
+    def test_scrape_options_snake_case_still_works(self):
+        """Test ScrapeOptions still accepts snake_case (regression test)."""
+        options = ScrapeOptions(
+            include_tags=["h1", "h2"],
+            exclude_tags=["nav"],
+            only_main_content=False,
+            wait_for=2000,
+        )
+
+        assert options.include_tags == ["h1", "h2"]
+        assert options.exclude_tags == ["nav"]
+        assert options.only_main_content is False
+        assert options.wait_for == 2000
+
+
+class TestCrawlRequestCamelCaseAlias:
+    """Test that CrawlRequest accepts camelCase keys."""
+
+    def test_crawl_request_camel_case_keys(self):
+        """Test CrawlRequest accepts camelCase keys and converts them."""
+        request = CrawlRequest(**{
+            "url": "https://example.com",
+            "maxDiscoveryDepth": 3,
+            "excludePaths": ["/admin"],
+            "includePaths": ["/blog"],
+            "ignoreQueryParameters": True,
+            "crawlEntireDomain": True,
+            "allowExternalLinks": False,
+            "allowSubdomains": True,
+            "maxConcurrency": 5,
+            "zeroDataRetention": True,
+        })
+
+        assert request.url == "https://example.com"
+        assert request.max_discovery_depth == 3
+        assert request.exclude_paths == ["/admin"]
+        assert request.include_paths == ["/blog"]
+        assert request.ignore_query_parameters is True
+        assert request.crawl_entire_domain is True
+        assert request.allow_external_links is False
+        assert request.allow_subdomains is True
+        assert request.max_concurrency == 5
+        assert request.zero_data_retention is True
+
+    def test_crawl_request_with_nested_scrape_options(self):
+        """Test CrawlRequest with nested scrapeOptions in camelCase."""
+        request = CrawlRequest(**{
+            "url": "https://example.com",
+            "maxDiscoveryDepth": 2,
+            "scrapeOptions": {
+                "includeTags": ["article"],
+                "waitFor": 1000,
+            }
+        })
+
+        assert request.max_discovery_depth == 2
+        assert request.scrape_options is not None
+        assert request.scrape_options.include_tags == ["article"]
+        assert request.scrape_options.wait_for == 1000
+
+
+class TestMapOptionsCamelCaseAlias:
+    """Test that MapOptions accepts camelCase keys."""
+
+    def test_map_options_camel_case_keys(self):
+        """Test MapOptions accepts camelCase keys and converts them."""
+        options = MapOptions(**{
+            "includeSubdomains": True,
+            "ignoreQueryParameters": False,
+        })
+
+        assert options.include_subdomains is True
+        assert options.ignore_query_parameters is False
+
+
+class TestExtractRequestCamelCaseAlias:
+    """Test that ExtractRequest accepts camelCase keys."""
+
+    def test_extract_request_camel_case_keys(self):
+        """Test ExtractRequest accepts camelCase keys and converts them."""
+        request = ExtractRequest(**{
+            "urls": ["https://example.com"],
+            "prompt": "Extract data",
+            "systemPrompt": "You are a data extractor",
+            "allowExternalLinks": True,
+            "enableWebSearch": False,
+            "showSources": True,
+            "ignoreInvalidUrls": True,
+        })
+
+        assert request.urls == ["https://example.com"]
+        assert request.prompt == "Extract data"
+        assert request.system_prompt == "You are a data extractor"
+        assert request.allow_external_links is True
+        assert request.enable_web_search is False
+        assert request.show_sources is True
+        assert request.ignore_invalid_urls is True
+
+
+class TestSearchRequestCamelCaseAlias:
+    """Test that SearchRequest accepts camelCase keys."""
+
+    def test_search_request_camel_case_keys(self):
+        """Test SearchRequest accepts camelCase keys and converts them."""
+        request = SearchRequest(**{
+            "query": "test query",
+            "ignoreInvalidUrls": True,
+            "scrapeOptions": {
+                "includeTags": ["article"],
+            }
+        })
+
+        assert request.query == "test query"
+        assert request.ignore_invalid_urls is True
+        assert request.scrape_options is not None
+        assert request.scrape_options.include_tags == ["article"]
+
+
+class TestBatchScrapeRequestCamelCaseAlias:
+    """Test that BatchScrapeRequest accepts camelCase keys."""
+
+    def test_batch_scrape_request_camel_case_keys(self):
+        """Test BatchScrapeRequest accepts camelCase keys and converts them."""
+        request = BatchScrapeRequest(**{
+            "urls": ["https://example.com"],
+            "appendToId": "job-123",
+            "ignoreInvalidUrls": True,
+            "maxConcurrency": 10,
+            "zeroDataRetention": True,
+        })
+
+        assert request.urls == ["https://example.com"]
+        assert request.append_to_id == "job-123"
+        assert request.ignore_invalid_urls is True
+        assert request.max_concurrency == 10
+        assert request.zero_data_retention is True

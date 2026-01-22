@@ -2,8 +2,167 @@
 Shared validation functions for Firecrawl v2 API.
 """
 
-from typing import Optional, Dict, Any, List
+import re
+import warnings
+from typing import Optional, Dict, Any, List, Set, Tuple
 from ..types import ScrapeOptions, ScrapeFormats
+
+
+# Mapping of camelCase keys to their snake_case equivalents for common SDK options
+# This is used to detect when users accidentally pass camelCase keys
+CAMEL_TO_SNAKE_MAPPINGS: Dict[str, str] = {
+    # ScrapeOptions fields
+    "includeTags": "include_tags",
+    "excludeTags": "exclude_tags",
+    "onlyMainContent": "only_main_content",
+    "waitFor": "wait_for",
+    "skipTlsVerification": "skip_tls_verification",
+    "removeBase64Images": "remove_base64_images",
+    "fastMode": "fast_mode",
+    "useMock": "use_mock",
+    "blockAds": "block_ads",
+    "storeInCache": "store_in_cache",
+    "maxAge": "max_age",
+    "minAge": "min_age",
+    "fullPage": "full_page",
+    "maxPages": "max_pages",
+    # CrawlRequest fields
+    "excludePaths": "exclude_paths",
+    "includePaths": "include_paths",
+    "maxDiscoveryDepth": "max_discovery_depth",
+    "ignoreQueryParameters": "ignore_query_parameters",
+    "crawlEntireDomain": "crawl_entire_domain",
+    "allowExternalLinks": "allow_external_links",
+    "allowSubdomains": "allow_subdomains",
+    "maxConcurrency": "max_concurrency",
+    "zeroDataRetention": "zero_data_retention",
+    "scrapeOptions": "scrape_options",
+    "ignoreSitemap": "ignore_sitemap",
+    # BatchScrapeRequest fields
+    "appendToId": "append_to_id",
+    "ignoreInvalidUrls": "ignore_invalid_urls",
+    # ExtractRequest fields
+    "systemPrompt": "system_prompt",
+    "enableWebSearch": "enable_web_search",
+    "showSources": "show_sources",
+    # SearchRequest fields
+    "pageOptions": "page_options",
+    # MapOptions fields
+    "includeSubdomains": "include_subdomains",
+    # Common nested fields
+    "sourceURL": "source_url",
+    "statusCode": "status_code",
+}
+
+
+def _is_camel_case(s: str) -> bool:
+    """
+    Check if a string is in camelCase format.
+
+    Returns True if the string:
+    - Contains at least one lowercase letter followed by an uppercase letter
+    - Does not start with an uppercase letter (that would be PascalCase)
+    - Is not all lowercase or all uppercase
+    """
+    if not s or len(s) < 2:
+        return False
+    # Check for camelCase pattern: lowercase followed by uppercase
+    return bool(re.search(r'[a-z][A-Z]', s))
+
+
+def detect_camel_case_keys(data: Dict[str, Any], context: str = "") -> List[Tuple[str, str]]:
+    """
+    Detect camelCase keys in a dictionary and return suggestions for snake_case equivalents.
+
+    Args:
+        data: Dictionary to check for camelCase keys
+        context: Optional context string for better warning messages (e.g., "scrape_options")
+
+    Returns:
+        List of tuples: (camelCase_key, suggested_snake_case)
+    """
+    if not isinstance(data, dict):
+        return []
+
+    found_issues: List[Tuple[str, str]] = []
+
+    for key in data.keys():
+        if not isinstance(key, str):
+            continue
+
+        # Check if we have a known mapping
+        if key in CAMEL_TO_SNAKE_MAPPINGS:
+            found_issues.append((key, CAMEL_TO_SNAKE_MAPPINGS[key]))
+        # Check if it looks like camelCase even if not in our mapping
+        elif _is_camel_case(key):
+            # Convert camelCase to snake_case for suggestion
+            snake_case = re.sub(r'([a-z])([A-Z])', r'\1_\2', key).lower()
+            found_issues.append((key, snake_case))
+
+    return found_issues
+
+
+def warn_on_camel_case_keys(
+    data: Dict[str, Any],
+    context: str = "options",
+    stacklevel: int = 3
+) -> None:
+    """
+    Emit a warning if camelCase keys are detected in the dictionary.
+
+    The Python SDK uses snake_case for all parameters. This function helps catch
+    cases where users accidentally use camelCase (e.g., from JavaScript examples).
+
+    Args:
+        data: Dictionary to check
+        context: Context for the warning message (e.g., "scrape_options", "CrawlRequest")
+        stacklevel: Stack level for the warning (default 3 to show caller's location)
+    """
+    issues = detect_camel_case_keys(data, context)
+
+    if issues:
+        # Build a helpful warning message
+        suggestions = [f"'{camel}' -> '{snake}'" for camel, snake in issues]
+        message = (
+            f"Detected camelCase keys in {context}. "
+            f"The Python SDK uses snake_case. "
+            f"Please use: {', '.join(suggestions)}"
+        )
+        warnings.warn(message, UserWarning, stacklevel=stacklevel)
+
+
+def convert_camel_to_snake_keys(data: Any) -> Any:
+    """
+    Recursively convert camelCase keys in a dictionary to snake_case.
+
+    This allows the Python SDK to accept both camelCase (from JS/API examples)
+    and snake_case (Pythonic) keys.
+
+    Args:
+        data: Dictionary or value to convert
+
+    Returns:
+        Data with camelCase keys converted to snake_case
+    """
+    if isinstance(data, dict):
+        converted = {}
+        for key, value in data.items():
+            if isinstance(key, str):
+                # Use known mapping if available, otherwise convert
+                if key in CAMEL_TO_SNAKE_MAPPINGS:
+                    new_key = CAMEL_TO_SNAKE_MAPPINGS[key]
+                elif _is_camel_case(key):
+                    new_key = re.sub(r'([a-z])([A-Z])', r'\1_\2', key).lower()
+                else:
+                    new_key = key
+                converted[new_key] = convert_camel_to_snake_keys(value)
+            else:
+                converted[key] = convert_camel_to_snake_keys(value)
+        return converted
+    elif isinstance(data, list):
+        return [convert_camel_to_snake_keys(item) for item in data]
+    else:
+        return data
 
 
 def _convert_format_string(format_str: str) -> str:

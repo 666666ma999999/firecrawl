@@ -4,6 +4,7 @@ Type definitions for Firecrawl v2 API.
 This module contains clean, modern type definitions for the v2 API.
 """
 
+import re
 import warnings
 from datetime import datetime
 from typing import Any, Dict, Generic, List, Literal, Optional, TypeVar, Union
@@ -44,6 +45,90 @@ T = TypeVar("T")
 
 # Module logger
 logger = logging.getLogger("firecrawl")
+
+
+# Mapping of camelCase keys to their snake_case equivalents
+# This allows the Python SDK to accept both camelCase (from JS/API examples)
+# and snake_case (Pythonic) parameter names
+_CAMEL_TO_SNAKE_MAPPINGS: Dict[str, str] = {
+    # ScrapeOptions fields
+    "includeTags": "include_tags",
+    "excludeTags": "exclude_tags",
+    "onlyMainContent": "only_main_content",
+    "waitFor": "wait_for",
+    "skipTlsVerification": "skip_tls_verification",
+    "removeBase64Images": "remove_base64_images",
+    "fastMode": "fast_mode",
+    "useMock": "use_mock",
+    "blockAds": "block_ads",
+    "storeInCache": "store_in_cache",
+    "maxAge": "max_age",
+    "minAge": "min_age",
+    "fullPage": "full_page",
+    "maxPages": "max_pages",
+    # CrawlRequest fields
+    "excludePaths": "exclude_paths",
+    "includePaths": "include_paths",
+    "maxDiscoveryDepth": "max_discovery_depth",
+    "ignoreQueryParameters": "ignore_query_parameters",
+    "crawlEntireDomain": "crawl_entire_domain",
+    "allowExternalLinks": "allow_external_links",
+    "allowSubdomains": "allow_subdomains",
+    "maxConcurrency": "max_concurrency",
+    "zeroDataRetention": "zero_data_retention",
+    "scrapeOptions": "scrape_options",
+    "ignoreSitemap": "ignore_sitemap",
+    "pollInterval": "poll_interval",
+    "requestTimeout": "request_timeout",
+    # BatchScrapeRequest fields
+    "appendToId": "append_to_id",
+    "ignoreInvalidUrls": "ignore_invalid_urls",
+    "idempotencyKey": "idempotency_key",
+    # ExtractRequest fields
+    "systemPrompt": "system_prompt",
+    "enableWebSearch": "enable_web_search",
+    "showSources": "show_sources",
+    # MapOptions fields
+    "includeSubdomains": "include_subdomains",
+    # Agent fields
+    "maxCredits": "max_credits",
+    "strictConstrainToUrls": "strict_constrain_to_urls",
+}
+
+
+def _is_camel_case(s: str) -> bool:
+    """Check if a string is in camelCase format."""
+    if not s or len(s) < 2:
+        return False
+    return bool(re.search(r'[a-z][A-Z]', s))
+
+
+def _convert_camel_to_snake_keys(data: Any) -> Any:
+    """
+    Recursively convert camelCase keys in a dictionary to snake_case.
+
+    This allows the Python SDK to accept both camelCase (from JS/API examples)
+    and snake_case (Pythonic) keys.
+    """
+    if isinstance(data, dict):
+        converted = {}
+        for key, value in data.items():
+            if isinstance(key, str):
+                # Use known mapping if available, otherwise convert
+                if key in _CAMEL_TO_SNAKE_MAPPINGS:
+                    new_key = _CAMEL_TO_SNAKE_MAPPINGS[key]
+                elif _is_camel_case(key):
+                    new_key = re.sub(r'([a-z])([A-Z])', r'\1_\2', key).lower()
+                else:
+                    new_key = key
+                converted[new_key] = _convert_camel_to_snake_keys(value)
+            else:
+                converted[key] = _convert_camel_to_snake_keys(value)
+        return converted
+    elif isinstance(data, list):
+        return [_convert_camel_to_snake_keys(item) for item in data]
+    else:
+        return data
 
 
 # Base response types
@@ -491,7 +576,11 @@ class ScrapeFormats(BaseModel):
 
 
 class ScrapeOptions(BaseModel):
-    """Options for scraping operations."""
+    """Options for scraping operations.
+
+    Accepts both snake_case (Pythonic) and camelCase (JS/API style) parameter names.
+    For example, both `include_tags` and `includeTags` are accepted.
+    """
 
     formats: Optional[Union["ScrapeFormats", List[FormatOption]]] = None
     headers: Optional[Dict[str, str]] = None
@@ -529,6 +618,14 @@ class ScrapeOptions(BaseModel):
     store_in_cache: Optional[bool] = None
     integration: Optional[str] = None
 
+    @model_validator(mode="before")
+    @classmethod
+    def convert_camel_case_keys(cls, data: Any) -> Any:
+        """Convert camelCase keys to snake_case for compatibility."""
+        if isinstance(data, dict):
+            return _convert_camel_to_snake_keys(data)
+        return data
+
     @field_validator("formats")
     @classmethod
     def validate_formats(cls, v):
@@ -565,7 +662,11 @@ class ScrapeResponse(BaseResponse[ScrapeData]):
 
 # Crawl types
 class CrawlRequest(BaseModel):
-    """Request for crawling a website."""
+    """Request for crawling a website.
+
+    Accepts both snake_case (Pythonic) and camelCase (JS/API style) parameter names.
+    For example, both `max_discovery_depth` and `maxDiscoveryDepth` are accepted.
+    """
 
     url: str
     prompt: Optional[str] = None
@@ -584,6 +685,14 @@ class CrawlRequest(BaseModel):
     scrape_options: Optional[ScrapeOptions] = None
     zero_data_retention: bool = False
     integration: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def convert_camel_case_keys(cls, data: Any) -> Any:
+        """Convert camelCase keys to snake_case for compatibility."""
+        if isinstance(data, dict):
+            return _convert_camel_to_snake_keys(data)
+        return data
 
 
 class CrawlResponse(BaseModel):
@@ -687,7 +796,10 @@ class CrawlParamsResponse(BaseResponse[CrawlParamsData]):
 
 # Batch scrape types
 class BatchScrapeRequest(BaseModel):
-    """Request for batch scraping multiple URLs (internal helper only)."""
+    """Request for batch scraping multiple URLs.
+
+    Accepts both snake_case (Pythonic) and camelCase (JS/API style) parameter names.
+    """
 
     urls: List[str]
     options: Optional[ScrapeOptions] = None
@@ -697,6 +809,14 @@ class BatchScrapeRequest(BaseModel):
     max_concurrency: Optional[int] = None
     zero_data_retention: Optional[bool] = None
     integration: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def convert_camel_case_keys(cls, data: Any) -> Any:
+        """Convert camelCase keys to snake_case for compatibility."""
+        if isinstance(data, dict):
+            return _convert_camel_to_snake_keys(data)
+        return data
 
 
 class BatchScrapeResponse(BaseModel):
@@ -733,7 +853,10 @@ class BatchScrapeErrorsRequest(BaseModel):
 
 # Map types
 class MapOptions(BaseModel):
-    """Options for mapping operations."""
+    """Options for mapping operations.
+
+    Accepts both snake_case (Pythonic) and camelCase (JS/API style) parameter names.
+    """
 
     search: Optional[str] = None
     sitemap: Literal["only", "include", "skip"] = "include"
@@ -743,6 +866,14 @@ class MapOptions(BaseModel):
     timeout: Optional[int] = None
     integration: Optional[str] = None
     location: Optional["Location"] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def convert_camel_case_keys(cls, data: Any) -> Any:
+        """Convert camelCase keys to snake_case for compatibility."""
+        if isinstance(data, dict):
+            return _convert_camel_to_snake_keys(data)
+        return data
 
 
 class MapRequest(BaseModel):
@@ -766,7 +897,10 @@ class MapResponse(BaseResponse[MapData]):
 
 # Extract types
 class ExtractRequest(BaseModel):
-    """Request for extract operations."""
+    """Request for extract operations.
+
+    Accepts both snake_case (Pythonic) and camelCase (JS/API style) parameter names.
+    """
 
     urls: Optional[List[str]] = None
     prompt: Optional[str] = None
@@ -779,6 +913,14 @@ class ExtractRequest(BaseModel):
     ignore_invalid_urls: Optional[bool] = None
     integration: Optional[str] = None
     agent: Optional[AgentOptions] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def convert_camel_case_keys(cls, data: Any) -> Any:
+        """Convert camelCase keys to snake_case for compatibility."""
+        if isinstance(data, dict):
+            return _convert_camel_to_snake_keys(data)
+        return data
 
 
 class ExtractResponse(BaseModel):
@@ -972,7 +1114,10 @@ class Location(BaseModel):
 
 
 class SearchRequest(BaseModel):
-    """Request for search operations."""
+    """Request for search operations.
+
+    Accepts both snake_case (Pythonic) and camelCase (JS/API style) parameter names.
+    """
 
     query: str
     sources: Optional[List[SourceOption]] = None
@@ -984,6 +1129,14 @@ class SearchRequest(BaseModel):
     timeout: Optional[int] = 300000
     scrape_options: Optional[ScrapeOptions] = None
     integration: Optional[str] = None
+
+    @model_validator(mode="before")
+    @classmethod
+    def convert_camel_case_keys(cls, data: Any) -> Any:
+        """Convert camelCase keys to snake_case for compatibility."""
+        if isinstance(data, dict):
+            return _convert_camel_to_snake_keys(data)
+        return data
 
     @field_validator("sources")
     @classmethod
