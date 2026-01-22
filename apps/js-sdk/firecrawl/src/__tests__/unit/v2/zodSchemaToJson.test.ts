@@ -4,7 +4,7 @@ import {
   isZodSchema,
   zodSchemaToJsonSchema,
   looksLikeZodShape,
-} from "../../utils/zodSchemaToJson";
+} from "../../../utils/zodSchemaToJson";
 
 describe("zodSchemaToJson utility", () => {
   test("isZodSchema detects Zod schemas and rejects non-Zod values", () => {
