@@ -16,7 +16,7 @@ export type FdwJobMode =
   | "agent"
   | "deep_research";
 
-export type FdwJobsQueryParams = {
+type FdwJobsQueryParams = {
   apiKeyId: number;
   startDate: Date;
   endDate: Date;
@@ -26,7 +26,7 @@ export type FdwJobsQueryParams = {
   offset: number;
 };
 
-export type FdwJobRow = {
+type FdwJobRow = {
   job_id: string;
   mode: string;
   created_at: string;

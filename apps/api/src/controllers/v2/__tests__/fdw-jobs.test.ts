@@ -34,7 +34,7 @@ describe("fdwJobsController", () => {
       query: {},
       acuc: { api_key_id: 123 },
       auth: { team_id: "team-123" },
-    } as RequestWithAuth;
+    } as unknown as RequestWithAuth;
 
     const res = buildRes();
     await fdwJobsController(req, res);
@@ -60,7 +60,7 @@ describe("fdwJobsController", () => {
       },
       acuc: { api_key_id: 123 },
       auth: { team_id: "team-123" },
-    } as RequestWithAuth;
+    } as unknown as RequestWithAuth;
 
     const res = buildRes();
     await fdwJobsController(req, res);
