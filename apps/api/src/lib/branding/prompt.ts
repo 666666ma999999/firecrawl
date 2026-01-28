@@ -295,15 +295,21 @@ export function buildBrandingPrompt(input: BrandingLLMInput): string {
         ? meta.aspectRatio.toFixed(1)
         : "n/a";
       const hintLabel = meta.hints.length > 0 ? meta.hints.join(", ") : "none";
+      const sourceLabel = candidate.source ? `source:${candidate.source}` : "";
+      const svgScoreLabel =
+        candidate.logoSvgScore !== undefined
+          ? `logoSvgScore:${Math.round(candidate.logoSvgScore)}`
+          : "";
 
-      prompt += `#${idx}: ${candidate.location} | ${candidate.isVisible ? "visible" : "hidden"} | ${typeLabel} | size:${meta.width}x${meta.height} (${meta.sizeLabel}, area:${meta.area}, aspect:${aspectLabel}) | top:${meta.top}px left:${meta.left}px | href:${meta.hrefType} | alt:"${candidate.alt || ""}" | aria:"${candidate.ariaLabel || ""}" | indicators:[${indicators.join(", ")}] | hints:[${hintLabel}] | ${urlPreview}\n`;
+      prompt += `#${idx}: ${candidate.location} | ${candidate.isVisible ? "visible" : "hidden"} | ${typeLabel} | size:${meta.width}x${meta.height} (${meta.sizeLabel}, area:${meta.area}, aspect:${aspectLabel}) | top:${meta.top}px left:${meta.left}px | href:${meta.hrefType} | alt:"${candidate.alt || ""}" | aria:"${candidate.ariaLabel || ""}" | indicators:[${indicators.join(", ")}] | hints:[${hintLabel}]${sourceLabel ? ` | ${sourceLabel}` : ""}${svgScoreLabel ? ` | ${svgScoreLabel}` : ""} | ${urlPreview}\n`;
     });
 
     prompt += `\n**Candidate Hints (how to use them):**\n`;
     prompt += `- size labels: tiny/small are usually UI icons; hero-sized are usually hero images/banners\n`;
     prompt += `- wordmark-shaped is OK if it is in header and links to homepage\n`;
     prompt += `- href:home/internal is a strong brand signal; href:external is usually NOT the brand logo\n`;
-    prompt += `- svgScore is only for SVGs (higher = more logo-like graphic)\n\n`;
+    prompt += `- source: document.images = main page images (often the primary brand logo)\n`;
+    prompt += `- logoSvgScore/svgScore: higher = more logo-like (SVG or image)\n\n`;
 
     prompt += `\n**LOGO SELECTION - SIMPLE APPROACH:**\n`;
     if (input.screenshot) {

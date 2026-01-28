@@ -485,6 +485,9 @@ export function getTopCandidatesForLLM(
     if (candidate.indicators.srcMatch) score += 10;
     if (candidate.indicators.altMatch) score += 5;
 
+    // Main document images are often the primary brand logo
+    if (candidate.source === "document.images") score += 15;
+
     return { originalIndex, score, candidate };
   });
 

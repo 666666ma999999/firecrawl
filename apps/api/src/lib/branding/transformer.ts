@@ -74,10 +74,10 @@ export async function brandingTransformer(
       ? shouldUseLLMForLogoSelection(heuristicResult.confidence)
       : false;
 
-    // Filter to top 10 candidates for LLM (reduces token cost)
+    // Filter to top 20 candidates for LLM (keeps strong body candidates like alt="X logo" + document.images)
     const { filteredCandidates, indexMap } =
       needsLLMValidation && logoCandidates.length > 0
-        ? getTopCandidatesForLLM(logoCandidates, 10)
+        ? getTopCandidatesForLLM(logoCandidates, 20)
         : { filteredCandidates: [], indexMap: new Map<number, number>() };
 
     // Limit buttons to top 12 most relevant ones to reduce prompt size

@@ -94,7 +94,9 @@ export async function enhanceBrandingWithLLM(
       schema,
       providerOptions: {
         openai: {
-          strictJsonSchema: true,
+          // Prefer loose schema so we use whatever the LLM returns (avoids validation
+          // failures on minor schema drift or when model omits optional fields).
+          strictJsonSchema: false,
         },
       },
       messages: [
@@ -162,6 +164,8 @@ export async function enhanceBrandingWithLLM(
     // Type assertion to handle optional logoSelection
     return result.object as BrandingEnhancement;
   } catch (error) {
+    // Includes refusals (content type "refusal" vs expected "output_text") and
+    // schema validation failures; we always return a safe fallback.
     Sentry.withScope(scope => {
       scope.setTag("feature", "branding-llm");
       scope.setTag("model", modelName);
