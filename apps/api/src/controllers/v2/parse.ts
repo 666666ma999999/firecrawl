@@ -12,6 +12,7 @@ import {
   parseRequestSchema,
   RequestWithAuth,
   ScrapeResponse,
+  scrapeOptions,
 } from "./types";
 import { v7 as uuidv7 } from "uuid";
 import { hasFormatOfType } from "../../lib/format-utils";
@@ -59,6 +60,13 @@ const MARKDOWN_MIME_TYPES = ["text/markdown"];
 type FileDetection = {
   kind: LocalFileKind;
   contentType: string;
+};
+
+type ParseMultipartBody = {
+  options?: string;
+  origin?: string;
+  integration?: string;
+  zeroDataRetention?: string | boolean;
 };
 
 async function readFileSignature(filePath: string): Promise<Buffer> {
@@ -144,7 +152,7 @@ function getForcedEngine(kind: LocalFileKind): Engine {
 }
 
 export async function parseController(
-  req: RequestWithAuth<{}, ScrapeResponse, ParseRequest>,
+  req: RequestWithAuth<{}, ScrapeResponse, ParseMultipartBody>,
   res: Response<ScrapeResponse>,
 ) {
   return withSpan(
@@ -225,9 +233,12 @@ export async function parseController(
           }
         }
 
-        parsedOptions = parseOptionsSchema.parse(optionsInput) as ParseOptions;
-        parsedRequest = parseRequestSchema.parse({
-          options: parsedOptions,
+        const optionsData = parseOptionsSchema.parse(
+          optionsInput,
+        ) as ParseOptions;
+        parsedOptions = optionsData;
+        const requestData = parseRequestSchema.parse({
+          options: optionsData,
           origin:
             typeof req.body?.origin === "string" && req.body.origin.trim()
               ? req.body.origin
@@ -239,8 +250,12 @@ export async function parseController(
               : undefined,
           zeroDataRetention: parseBoolean(req.body?.zeroDataRetention),
         });
+        parsedRequest = requestData;
 
-        const permissions = checkPermissions(parsedOptions, req.acuc?.flags);
+        const permissions = checkPermissions(
+          { zeroDataRetention: requestData.zeroDataRetention },
+          req.acuc?.flags,
+        );
         if (permissions.error) {
           setSpanAttributes(span, {
             "parse.error": permissions.error,
@@ -253,8 +268,7 @@ export async function parseController(
         }
 
         zeroDataRetention =
-          req.acuc?.flags?.forceZDR ||
-          (parsedRequest.zeroDataRetention ?? false);
+          req.acuc?.flags?.forceZDR || (requestData.zeroDataRetention ?? false);
 
         const logger = _logger.child({
           method: "parseController",
@@ -279,8 +293,8 @@ export async function parseController(
           kind: "scrape",
           api_version: "v2",
           team_id: req.auth.team_id,
-          origin: parsedRequest.origin ?? "api",
-          integration: parsedRequest.integration,
+          origin: requestData.origin ?? "api",
+          integration: requestData.integration,
           target_hint: filename,
           zeroDataRetention: zeroDataRetention || false,
           api_key_id: req.acuc?.api_key_id ?? null,
@@ -288,13 +302,13 @@ export async function parseController(
 
         setSpanAttributes(span, {
           "parse.zero_data_retention": zeroDataRetention,
-          "parse.origin": parsedRequest.origin,
-          "parse.timeout": parsedOptions.timeout,
+          "parse.origin": requestData.origin,
+          "parse.timeout": optionsData.timeout,
           "parse.file_kind": detection.kind,
           "parse.file_name": filename,
         });
 
-        const timeout = parsedOptions.timeout;
+        const timeout = optionsData.timeout;
 
         const lockStart = Date.now();
         const aborter = new AbortController();
@@ -339,7 +353,7 @@ export async function parseController(
                 mode: "single_urls",
                 team_id: req.auth.team_id,
                 scrapeOptions: {
-                  ...parsedOptions,
+                  ...scrapeOptions.parse(optionsData),
                   storeInCache: false,
                 },
                 internalOptions: {
@@ -356,8 +370,8 @@ export async function parseController(
                   disableIndexing: true,
                 },
                 skipNuq: true,
-                origin: parsedRequest.origin ?? "api",
-                integration: parsedRequest.integration,
+                origin: requestData.origin ?? "api",
+                integration: requestData.integration,
                 startTime: controllerStartTime,
                 zeroDataRetention,
                 apiKeyId: req.acuc?.api_key_id ?? null,
