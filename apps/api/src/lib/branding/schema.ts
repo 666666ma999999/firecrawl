@@ -107,7 +107,7 @@ const brandingEnhancementSchemaWithLogo = baseBrandingEnhancementSchema.extend({
     selectedLogoIndex: z
       .number()
       .describe(
-        "REQUIRED: Index of the selected logo in the provided candidates list (0-based), or -1 if NONE of the candidates match the brand name. YOU MUST RETURN A NUMBER.",
+        "REQUIRED: Index of the selected logo in the provided candidates list (0-based), or -1 if NONE of the candidates match the site's brand. Infer the brand from page title/URL when provided (e.g. 'X | Miro' → brand Miro). YOU MUST RETURN A NUMBER.",
       ),
     selectedLogoReasoning: z
       .string()

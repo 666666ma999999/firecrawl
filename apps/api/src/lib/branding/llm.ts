@@ -25,16 +25,15 @@ export async function enhanceBrandingWithLLM(
   const logoCandidatesCount = input.logoCandidates?.length || 0;
   const promptLength = prompt.length;
 
-  // Use gpt-4o for complex cases:
-  // - Many buttons (>8)
-  // - Many logo candidates (>5)
+  // Use gpt-4o for complex/visual cases (better vision and reasoning):
+  // - Has screenshot (vision task – gpt-4o has strong visual capabilities)
+  // - Many buttons (>8) or logo candidates (>5)
   // - Long prompt (>8000 chars)
-  // - Has screenshot (adds complexity)
   const isComplexCase =
+    !!input.screenshot ||
     buttonsCount > 8 ||
     logoCandidatesCount > 5 ||
-    promptLength > 8000 ||
-    !!input.screenshot;
+    promptLength > 8000;
 
   const modelName = isComplexCase ? "gpt-4o" : "gpt-4o-mini";
   const model = getModel(modelName);
@@ -125,6 +124,12 @@ export async function enhanceBrandingWithLLM(
       },
     });
 
+    console.log("🔥 prompt", prompt);
+
+    console.log("🔥 screenshot", input.screenshot);
+
+    console.log("🔥 result", result);
+
     if (isDebugBrandingEnabled(input)) {
       const reasoningPreview = result.reasoning
         ? result.reasoning.length > 1000
@@ -161,29 +166,53 @@ export async function enhanceBrandingWithLLM(
       }
     }
 
-    // Type assertion to handle optional logoSelection
-    return result.object as BrandingEnhancement;
+    // When there are no logo candidates, do not pass logoSelection so downstream treats it as "none"
+    const resultObject = result.object as BrandingEnhancement;
+    if (!hasLogoCandidates && resultObject?.logoSelection != null) {
+      const { logoSelection: _, ...rest } = resultObject;
+      return rest as BrandingEnhancement;
+    }
+    return resultObject;
   } catch (error) {
-    // Includes refusals (content type "refusal" vs expected "output_text") and
-    // schema validation failures; we always return a safe fallback.
-    Sentry.withScope(scope => {
-      scope.setTag("feature", "branding-llm");
-      scope.setTag("model", modelName);
-      scope.setContext("branding_llm", {
-        url: input.url,
-        buttonsCount: input.buttons?.length || 0,
-        logoCandidatesCount: input.logoCandidates?.length || 0,
-        promptLength: prompt.length,
-        hasScreenshot: !!input.screenshot,
-      });
-      Sentry.captureException(error);
-    });
+    // Refusal: API returned content type "refusal" (e.g. "I can't assist with that") but the SDK
+    // expects "output_text", so it throws before we get a result. Treat as soft failure, not a bug.
+    const message = error instanceof Error ? error.message : String(error);
+    const causeMessage =
+      error instanceof Error && error.cause instanceof Error
+        ? (error.cause as Error).message
+        : "";
+    const isRefusalOrOutputValidation =
+      /output_text|refusal|Invalid input: expected/i.test(message) ||
+      /output_text|refusal|Invalid input: expected/i.test(causeMessage);
 
-    logger.error("LLM branding enhancement failed", {
-      error,
-      buttonsCount: input.buttons?.length || 0,
-      promptLength: prompt.length,
-    });
+    if (isRefusalOrOutputValidation) {
+      logger.info(
+        "LLM branding: model refused or returned invalid format, using fallback",
+        {
+          reason: "refusal_or_invalid_output",
+          buttonsCount: input.buttons?.length || 0,
+          promptLength: prompt.length,
+        },
+      );
+    } else {
+      Sentry.withScope(scope => {
+        scope.setTag("feature", "branding-llm");
+        scope.setTag("model", modelName);
+        scope.setContext("branding_llm", {
+          url: input.url,
+          buttonsCount: input.buttons?.length || 0,
+          logoCandidatesCount: input.logoCandidates?.length || 0,
+          promptLength: prompt.length,
+          hasScreenshot: !!input.screenshot,
+        });
+        Sentry.captureException(error);
+      });
+      logger.error("LLM branding enhancement failed", {
+        error,
+        buttonsCount: input.buttons?.length || 0,
+        promptLength: prompt.length,
+      });
+    }
 
     return {
       cleanedFonts: [],

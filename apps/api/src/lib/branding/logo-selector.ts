@@ -281,6 +281,9 @@ export function selectLogoWithConfidence(
     if (candidate.isVisible) {
       score += 15;
       reasons.push("visible");
+    } else {
+      score -= 25;
+      reasons.push("invisible (hidden/minimized variant, heavy penalty)");
     }
 
     if (candidate.position.top < 100 && candidate.position.left < 300) {
@@ -442,13 +445,6 @@ export function selectLogoWithConfidence(
     method: "heuristic",
     reasoning: `Weak indicators: ${top.reasons}. Score: ${top.score}. LLM validation recommended (close scores: top=${top.score}, second=${secondBest?.score || 0})`,
   };
-}
-
-/**
- * Determine if LLM validation is needed based on heuristic confidence
- */
-export function shouldUseLLMForLogoSelection(confidence: number): boolean {
-  return confidence < CONFIDENCE_THRESHOLDS.LLM_THRESHOLD;
 }
 
 /**

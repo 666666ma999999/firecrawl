@@ -26,8 +26,13 @@ export function mergeBrandingResults(
 ): BrandingProfile {
   const merged: BrandingProfile = { ...js };
 
-  // Handle logo selection: if LLM says no logo (-1), clear it
-  if (llm.logoSelection && llm.logoSelection.selectedLogoIndex !== undefined) {
+  // Handle logo selection only when we had logo candidates; ignore logoSelection when there were none
+  const hasLogoCandidates = !!(logoCandidates && logoCandidates.length > 0);
+  if (
+    hasLogoCandidates &&
+    llm.logoSelection &&
+    llm.logoSelection.selectedLogoIndex !== undefined
+  ) {
     // If LLM explicitly says no logo (returns -1), remove any logo that was set
     if (llm.logoSelection.selectedLogoIndex === -1) {
       if (merged.images) {
@@ -39,6 +44,7 @@ export function mergeBrandingResults(
           llm.logoSelection.selectedLogoReasoning || "No valid logo found",
         confidence: llm.logoSelection.confidence || 0,
         rejected: true,
+        source: "llm",
       };
     }
     // If LLM selected a valid logo index
@@ -124,43 +130,62 @@ export function mergeBrandingResults(
           selectedLogo.indicators?.hrefMatch &&
           hasReasonableSize;
 
-        const hasRedFlags =
+        const reasoning = llm.logoSelection.selectedLogoReasoning ?? "";
+        const isHeuristicOrFallback =
+          reasoning.includes("Heuristic") ||
+          reasoning.includes("heuristic") ||
+          reasoning === "LLM failed" ||
+          reasoning.includes("invalid index");
+
+        // Trust LLM logo choice: don't reject for "small square icon" when LLM selected it
+        const smallSquareRedFlag =
+          smallSquareIconLikelyUi &&
+          !hasStrongIndicators &&
+          isHeuristicOrFallback;
+        const hasRedFlagsWithLLMTrust =
           isLanguageWord ||
           isCommonMenuWord ||
           isUIIcon ||
-          (smallSquareIconLikelyUi && !hasStrongIndicators) ||
+          smallSquareRedFlag ||
           isExternalLink;
-
-        const shouldIncludeLogo =
-          !hasRedFlags &&
+        const shouldIncludeLogoWithLLMTrust =
+          !hasRedFlagsWithLLMTrust &&
           (confidence >= 0.5 || (hasStrongIndicators && confidence >= 0.4));
 
-        if (shouldIncludeLogo) {
+        if (shouldIncludeLogoWithLLMTrust) {
           // Initialize images object if it doesn't exist
           if (!merged.images) {
             merged.images = {};
           }
           merged.images.logo = selectedLogo.src;
+          if (selectedLogo.href) merged.images.logoHref = selectedLogo.href;
+          if (selectedLogo.alt) merged.images.logoAlt = selectedLogo.alt;
           (merged as any).__llm_logo_reasoning = {
             selectedIndex: llm.logoSelection.selectedLogoIndex,
             reasoning: llm.logoSelection.selectedLogoReasoning,
             confidence: llm.logoSelection.confidence,
+            source: isHeuristicOrFallback ? "heuristic" : "llm",
           };
+          console.log("[branding merge] Logo INCLUDED", {
+            result: "included",
+            selectedIndex: llm.logoSelection.selectedLogoIndex,
+            source: isHeuristicOrFallback ? "heuristic" : "llm",
+            confidence,
+            reasoning: (reasoning || "").slice(0, 120),
+          });
         } else {
           // Log why we're not including the logo
           let rejectionReason = "Low confidence";
-          if (hasRedFlags) {
-            const redFlagReasons: string[] = [];
+          const redFlagReasons: string[] = [];
+          if (hasRedFlagsWithLLMTrust) {
             if (isLanguageWord) redFlagReasons.push("language word");
             if (isCommonMenuWord) redFlagReasons.push("menu word");
             if (isUIIcon) redFlagReasons.push("UI icon");
-            if (smallSquareIconLikelyUi && !hasStrongIndicators)
-              redFlagReasons.push("small square icon");
+            if (smallSquareRedFlag) redFlagReasons.push("small square icon");
             if (isExternalLink) redFlagReasons.push("external link");
             rejectionReason = `Red flags detected (${redFlagReasons.join(", ")})`;
           }
-          const selectedLogoReasoning =
-            llm.logoSelection.selectedLogoReasoning?.trim() || "";
+          const selectedLogoReasoning = reasoning.trim();
           (merged as any).__llm_logo_reasoning = {
             selectedIndex: llm.logoSelection.selectedLogoIndex,
             reasoning: selectedLogoReasoning
@@ -168,7 +193,21 @@ export function mergeBrandingResults(
               : `Logo rejected: ${rejectionReason}.`,
             confidence: llm.logoSelection.confidence,
             rejected: true,
+            source: isHeuristicOrFallback ? "heuristic" : "llm",
           };
+          console.log("[branding merge] Logo REJECTED (override)", {
+            result: "rejected",
+            selectedIndex: llm.logoSelection.selectedLogoIndex,
+            source: isHeuristicOrFallback ? "heuristic" : "llm",
+            confidence,
+            hasRedFlags: hasRedFlagsWithLLMTrust,
+            redFlagReasons: redFlagReasons.length ? redFlagReasons : undefined,
+            confidenceOk:
+              confidence >= 0.5 || (hasStrongIndicators && confidence >= 0.4),
+            isHeuristicOrFallback,
+            smallSquareRedFlag,
+            reasoning: (reasoning || "").slice(0, 120),
+          });
         }
       }
     }

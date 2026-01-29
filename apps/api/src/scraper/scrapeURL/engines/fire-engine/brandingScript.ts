@@ -671,6 +671,25 @@ export const getBrandingScript = () => String.raw`
       if (src) imgs.push({ type, src });
     };
 
+    // Query selector in document and all shadow roots (e.g. logos inside <hgf-c360nav>)
+    const querySelectorAllIncludingShadowRoots = (selector) => {
+      const results = [];
+      const seenRoots = new Set();
+      function walk(root) {
+        if (!root || seenRoots.has(root)) return;
+        seenRoots.add(root);
+        try {
+          const list = root.querySelectorAll(selector);
+          list.forEach((el) => results.push(el));
+          root.querySelectorAll("*").forEach((el) => {
+            if (el.shadowRoot) walk(el.shadowRoot);
+          });
+        } catch (_) {}
+      }
+      walk(document);
+      return results;
+    };
+
     push(document.querySelector('link[rel*="icon" i]')?.href, "favicon");
     push(document.querySelector('meta[property="og:image" i]')?.content, "og");
     push(
@@ -827,13 +846,21 @@ export const getBrandingScript = () => String.raw`
       return null;
     };
 
-    // Helper function to check if an href is a home link (including full URLs)
+    // Same host or same-brand sibling domain (e.g. neon.com and neon.tech)
+    const isSameBrandHost = (currentHostname, linkHostname) => {
+      if (currentHostname === linkHostname) return true;
+      const currentLabel = currentHostname.split('.')[0] || '';
+      const linkLabel = linkHostname.split('.')[0] || '';
+      return currentLabel.length > 1 && linkLabel.length > 1 && currentLabel === linkLabel;
+    };
+
+    // Helper: treat href as home/root (/, domain root, or same-origin locale root like /us, /es)
     const isHomeHref = (href) => {
       if (!href) return false;
       
       const normalizedHref = href.trim();
       
-      // Check for relative home paths
+      // Relative: /, ./, /home, /index, empty (same page)
       if (normalizedHref === './' || 
           normalizedHref === '/' || 
           normalizedHref === '/home' || 
@@ -842,7 +869,12 @@ export const getBrandingScript = () => String.raw`
         return true;
       }
       
-      // Check for full URLs that point to homepage
+      // Hash or query only = same page (e.g. #main-content)
+      if (normalizedHref.startsWith('#') || normalizedHref.startsWith('?')) {
+        return true;
+      }
+      
+      // Full URLs: same-origin (or same-brand domain) and path is root or locale root
       if (normalizedHref.startsWith('http://') || 
           normalizedHref.startsWith('https://') || 
           normalizedHref.startsWith('//')) {
@@ -851,18 +883,24 @@ export const getBrandingScript = () => String.raw`
           const linkUrl = new URL(href, window.location.origin);
           const linkHostname = linkUrl.hostname.toLowerCase();
           
-          // Same domain and path is root or home/index
-          if (linkHostname === currentHostname && 
-              (linkUrl.pathname === '/' || 
-               linkUrl.pathname === '/home' || 
-               linkUrl.pathname === '/index' ||
-               linkUrl.pathname === '/index.html')) {
-            return true;
-          }
+          if (!isSameBrandHost(currentHostname, linkHostname)) return false;
+          
+          const path = linkUrl.pathname.replace(/\/$/, '') || '/';
+          // Root
+          if (path === '/' || path === '/home' || path === '/index' || path === '/index.html') return true;
+          // Single-segment locale root (sites redirect / to /us, /es, /en, etc.)
+          const segments = path.split('/').filter(Boolean);
+          if (segments.length === 1) return true;
+          
+          return false;
         } catch (e) {
-          // URL parsing failed, not a home link
+          return false;
         }
       }
+      
+      // Relative single segment (e.g. "us", "es")
+      const segments = normalizedHref.split('/').filter(Boolean);
+      if (segments.length === 1 && !normalizedHref.includes('.')) return true;
       
       return false;
     };
@@ -1100,6 +1138,13 @@ export const getBrandingScript = () => String.raw`
       const inHeaderNav = el.closest('header, nav, [role="banner"]') !== null;
       const hasHomeHref = parentLink && isHomeHref(parentLink.getAttribute('href') || '');
       
+      // Skip "minimized" logo variants (e.g. Salesforce: same <a> has full logo + collapsed nav mini); prefer the main visible one
+      const elClass = (el.getAttribute('class') || '').toLowerCase();
+      if (/minimized/.test(elClass) && inHeaderNav) {
+        recordSkip("logo-minimized-variant", el, rect);
+        return;
+      }
+
       if (debugLogo && isCalComCase) {
         console.log('🔥 [LOGO DEBUG] Background image check:', {
           hasBgImage: !!bgImage && bgImage !== 'none',
@@ -1138,14 +1183,14 @@ export const getBrandingScript = () => String.raw`
         }
       }
 
-      const inHeader = el.closest(
-        'header, nav, [role="banner"], #navbar, [id*="navbar" i], [class*="navbar" i], [id*="header" i], [class*="header" i], #taskbar, [id*="taskbar" i], [role="menubar"]',
-      ) !== null;
-      
+      // Semantic header/nav only — avoid [id*="header"]/[class*="header"] so we don't mark card-header, content-header, modal-header, etc. as "in header"
+      const headerNavSelector =
+        'header, nav, [role="banner"], #navbar, [id*="navbar" i], #taskbar, [id*="taskbar" i], [role="menubar"]';
+      const inHeader = el.closest(headerNavSelector) !== null;
+
       // Also check if parent link is in header (for divs inside links)
-      const parentInHeader = parentLink && parentLink.closest(
-        'header, nav, [role="banner"], #navbar, [id*="navbar" i], [class*="navbar" i], [id*="header" i], [class*="header" i], #taskbar, [id*="taskbar" i], [role="menubar"]',
-      ) !== null;
+      const parentInHeader =
+        parentLink && parentLink.closest(headerNavSelector) !== null;
       
       // Check if element is in a top-level navigation container (sticky/fixed at top, taskbar, menubar, or first visible element)
       // This catches cases where the header isn't a <header> element but acts like one (e.g. PostHog taskbar)
@@ -1174,13 +1219,9 @@ export const getBrandingScript = () => String.raw`
           }
         }
         
-        // Also check if element itself is near the top of the page (first visible element)
-        // and has a home link - this is a strong indicator it's a logo
-        if (!inTopLevelNav && hasHomeHref && rect.top <= 100 && rect.left <= 200) {
-          inTopLevelNav = true;
-        }
+        // Do NOT mark "top-left home link" as in header by position alone — that marks body content (e.g. "Back to home") as header and causes false positives
       }
-      
+
       const finalInHeader = inHeader || parentInHeader || inTopLevelNav;
       
       // Check if element is inside a language switcher - be more specific
@@ -1308,6 +1349,13 @@ export const getBrandingScript = () => String.raw`
         }
       }
       
+      // Skip img/svg with menu/hamburger/toggle alt text (e.g. "mobile menu open", "Toggle Navigation") — not the brand logo
+      const elAlt = (el.getAttribute?.('alt') || (el).alt || '').toLowerCase();
+      if (/mobile menu|hamburger|toggle navigation|menu open|menu close|close-mobile|hamburger-img/i.test(elAlt)) {
+        recordSkip("menu-hamburger-alt", el, rect);
+        return;
+      }
+      
       const anchorParent = el.closest('a');
       const href = anchorParent ? (anchorParent.getAttribute('href') || '') : '';
       const anchorAriaLabel = (anchorParent?.getAttribute('aria-label') || '').toLowerCase();
@@ -1334,17 +1382,18 @@ export const getBrandingScript = () => String.raw`
             'app.netlify.com', 'vercel.com'
           ];
           
-          if (externalServiceDomains.some(domain => hrefLower.includes(domain))) {
-            recordSkip("external-service-domain", el, rect, { href });
-            return;
-          }
-          
           try {
             const currentHostname = window.location.hostname.toLowerCase();
             const linkUrl = new URL(href, window.location.origin);
             const linkHostname = linkUrl.hostname.toLowerCase();
+            const isSameSite = isSameBrandHost(currentHostname, linkHostname);
+            // Only skip external-service-domain when the link goes to a different site (e.g. footer Slack icon on example.com). When we're on slack.com and the logo links to slack.com, do not skip.
+            if (!isSameSite && externalServiceDomains.some(domain => hrefLower.includes(domain))) {
+              recordSkip("external-service-domain", el, rect, { href });
+              return;
+            }
             
-            if (linkHostname !== currentHostname) {
+            if (!isSameSite) {
               recordSkip("external-link-different-host", el, rect, {
                 href,
                 currentHostname,
@@ -1425,7 +1474,9 @@ export const getBrandingScript = () => String.raw`
         srcMatch = el.closest('[class*="logo" i], [id*="logo" i]') !== null;
       } else {
         const imgId = el.id || "";
-        alt = el.alt || "";
+        // Use img alt; fallback to parent <a> aria-label (e.g. "Salesforce Home") for structure <a href="..." aria-label="..."><img></a>
+        const parentLinkForAlt = el.closest('a');
+        alt = (el.alt && el.alt.trim()) || (parentLinkForAlt?.getAttribute('aria-label') || '').trim() || "";
         
         const idMatch = /logo/i.test(imgId);
         srcMatch = (el.src ? /logo/i.test(el.src) : false) || idMatch;
@@ -1471,8 +1522,27 @@ export const getBrandingScript = () => String.raw`
                 encodeURIComponent(serializer.serializeToString(el));
             } catch (e2) {
               recordError("XMLSerializer fallback", e2);
-              recordSkip("svg-serialize-failed", el, rect);
-              return;
+              const parentLink = el.closest('a');
+              const parentAria = (parentLink?.getAttribute('aria-label') || '').toLowerCase();
+              const inHeaderNav =
+                el.closest(
+                  'header, nav, [role="banner"], #navbar, [id*="navbar" i], #taskbar, [id*="taskbar" i], [role="menubar"]',
+                ) !== null;
+              const strongLogoCandidate = inHeaderNav && parentLink && /logo|homepage|home\s*page/i.test(parentAria);
+              if (strongLogoCandidate) {
+                try {
+                  const raw = el.cloneNode(true);
+                  const serializer = new XMLSerializer();
+                  src = "data:image/svg+xml;utf8," + encodeURIComponent(serializer.serializeToString(raw));
+                } catch (e3) {
+                  recordError("svg-strong-candidate-serialize", e3);
+                  recordSkip("svg-serialize-failed", el, rect);
+                  return;
+                }
+              } else {
+                recordSkip("svg-serialize-failed", el, rect);
+                return;
+              }
             }
           }
         }
@@ -1696,7 +1766,7 @@ export const getBrandingScript = () => String.raw`
             const linkUrl = new URL(href, window.location.origin);
             const linkHostname = linkUrl.hostname.toLowerCase();
             
-            if (linkHostname === currentHostname && (linkUrl.pathname === '/' || linkUrl.pathname === '/home' || linkUrl.pathname === '/index.html')) {
+            if (isSameBrandHost(currentHostname, linkHostname) && (linkUrl.pathname === '/' || linkUrl.pathname === '/home' || linkUrl.pathname === '/index.html')) {
               hrefMatch = true;
             }
           } catch (e) {}
@@ -1731,14 +1801,44 @@ export const getBrandingScript = () => String.raw`
           });
         }
         
+        const title = finalIsSvg
+          ? (el.querySelector?.('title')?.textContent?.trim() || undefined)
+          : (el.getAttribute?.('title') || (el.title !== undefined && el.title !== '' ? el.title : undefined));
+        // Use intrinsic dimensions when getBoundingClientRect() is 0x0 (e.g. hidden variant like lg:hidden / hidden lg:block)
+        let posWidth = rect.width;
+        let posHeight = rect.height;
+        let usedIntrinsicSize = false;
+        if ((posWidth <= 0 || posHeight <= 0) && el) {
+          const attrW = el.getAttribute?.('width');
+          const attrH = el.getAttribute?.('height');
+          const w = attrW != null ? parseFloat(attrW) : NaN;
+          const h = attrH != null ? parseFloat(attrH) : NaN;
+          if (w > 0) { posWidth = w; usedIntrinsicSize = true; }
+          if (h > 0) { posHeight = h; usedIntrinsicSize = true; }
+          if ((posWidth <= 0 || posHeight <= 0) && finalIsSvg && el.getAttribute?.('viewBox')) {
+            const vb = el.getAttribute('viewBox').trim().split(/[\s,]+/);
+            if (vb.length >= 4) {
+              const vw = parseFloat(vb[2]);
+              const vh = parseFloat(vb[3]);
+              if (vw > 0 && !Number.isNaN(vw)) { posWidth = posWidth <= 0 ? vw : posWidth; usedIntrinsicSize = true; }
+              if (vh > 0 && !Number.isNaN(vh)) { posHeight = posHeight <= 0 ? vh : posHeight; usedIntrinsicSize = true; }
+            }
+          }
+        }
+        // Only mark visible when actually rendered (rect > 0). Don't use intrinsic size to claim visibility — hidden elements (display:none, off-screen) often have 0x0 rect but width/height from attributes.
+        const actuallyVisible = isVisible && rect.width > 0 && rect.height > 0;
+        // Position: use rect when element is laid out; when rect is 0x0 (hidden), top/left are unreliable (often 0,0) so keep them but use intrinsic width/height for size only.
+        const positionTop = rect.width > 0 && rect.height > 0 ? rect.top : 0;
+        const positionLeft = rect.width > 0 && rect.height > 0 ? rect.left : 0;
         const logoCandidate = {
           src,
           alt,
-          ariaLabel: candidateAriaLabel,
+          ariaLabel: candidateAriaLabel || undefined,
+          title: title || undefined,
           isSvg: finalIsSvg,
-          isVisible,
+          isVisible: actuallyVisible,
           location: finalInHeader ? "header" : "body",
-          position: { top: rect.top, left: rect.left, width: rect.width, height: rect.height },
+          position: { top: positionTop, left: positionLeft, width: posWidth, height: posHeight },
           indicators: {
             inHeader: !!finalInHeader,
             altMatch,
@@ -1772,25 +1872,31 @@ export const getBrandingScript = () => String.raw`
 
     const allLogoSelectors = [
       'header a img, header a svg, header img, header svg',
+      'header a > svg, nav a > svg',
       '[class*="header" i] a img, [class*="header" i] a svg, [class*="header" i] img, [class*="header" i] svg',
       '[id*="header" i] a img, [id*="header" i] a svg, [id*="header" i] img, [id*="header" i] svg',
       'nav a img, nav a svg, nav img, nav svg',
       '[role="banner"] a img, [role="banner"] a svg, [role="banner"] img, [role="banner"] svg',
+      'a[aria-label*="logo" i] > svg, a[aria-label*="homepage" i] > svg',
       '#navbar a img, #navbar a svg, #navbar img, #navbar svg',
       '[id*="navbar" i] a img, [id*="navbar" i] a svg, [id*="navbar" i] img, [id*="navbar" i] svg',
       '[id*="navigation" i] a img, [id*="navigation" i] a svg, [id*="navigation" i] img, [id*="navigation" i] svg',
       '[class*="navbar" i] a img, [class*="navbar" i] a svg, [class*="navbar" i] img, [class*="navbar" i] svg',
+      '[class*="globalnav" i] a img, [class*="globalnav" i] a svg, [class*="globalnav" i] img, [class*="globalnav" i] svg',
+      '[class*="nav-wrapper" i] a img, [class*="nav-wrapper" i] a svg, [class*="nav-wrapper" i] img, [class*="nav-wrapper" i] svg',
       'a[data-nav*="logo" i] img, a[data-nav*="logo" i] svg',
+      'a[data-tracking-type*="logo" i] img, a[data-tracking-type*="logo" i] svg',
       'a[data-ga-name*="logo" i] img, a[data-ga-name*="logo" i] svg',
       'a[class*="logo" i] img, a[class*="logo" i] svg',
       'a[data-qa*="logo" i] img, a[data-qa*="logo" i] svg',
       'a[aria-label*="logo" i] img, a[aria-label*="logo" i] svg',
+      '[class*="header-logo" i] img, [class*="header-logo" i] svg',
+      '[class*="container-logo" i] a img, [class*="container-logo" i] a svg',
       '[class*="logo" i] img, [class*="logo" i] svg',
       '[id*="logo" i] img, [id*="logo" i] svg',
       'img[class*="nav-logo" i], svg[class*="nav-logo" i]',
       'img[class*="logo" i], svg[class*="logo" i]',
       // Top-level logos: SVGs/images in links with home href (href="/" or href="./")
-      // These are often logos even if not in header/nav
       'a[href="/"] svg, a[href="./"] svg',
       'a[href="/"] img, a[href="./"] img',
       // Taskbar/menubar at top (e.g. PostHog: logo in button, no link)
@@ -1800,7 +1906,7 @@ export const getBrandingScript = () => String.raw`
     ];
 
     allLogoSelectors.forEach(selector => {
-      const matches = Array.from(document.querySelectorAll(selector));
+      const matches = querySelectorAllIncludingShadowRoots(selector);
       if (debugStats) {
         debugStats.selectorCounts[selector] = matches.length;
       }
@@ -1869,7 +1975,7 @@ export const getBrandingScript = () => String.raw`
     ];
     
     logoContainerSelectors.forEach(selector => {
-      const matches = Array.from(document.querySelectorAll(selector));
+      const matches = querySelectorAllIncludingShadowRoots(selector);
       if (debugStats) {
         debugStats.selectorCounts[selector] = matches.length;
       }
@@ -2051,7 +2157,7 @@ export const getBrandingScript = () => String.raw`
 
     const excludeSelectors = '[class*="testimonial"], [class*="client"], [class*="partner"], [class*="customer"], [class*="case-study"], [id*="testimonial"], [id*="client"], [id*="partner"], [id*="customer"], [id*="case-study"], footer, [class*="footer"]';
     
-    const allImages = Array.from(document.images);
+    const allImages = querySelectorAllIncludingShadowRoots("img");
     if (debugStats) {
       debugStats.selectorCounts["document.images"] = allImages.length;
     }
@@ -2067,7 +2173,7 @@ export const getBrandingScript = () => String.raw`
       }
     });
 
-    const allSvgs = Array.from(document.querySelectorAll("svg"));
+    const allSvgs = querySelectorAllIncludingShadowRoots("svg");
     if (debugStats) {
       debugStats.selectorCounts["document.querySelectorAll(svg)"] = allSvgs.length;
     }
@@ -2136,7 +2242,7 @@ export const getBrandingScript = () => String.raw`
       const hasLogoAriaLabel = /logo/i.test(svgAriaLabel);
       const hasLogoTitle = /logo/i.test(svgTitle);
       const inHeaderNav = svg.closest(
-        'header, nav, [role="banner"], #navbar, [id*="navbar" i], [class*="navbar" i], [id*="header" i], [class*="header" i], #taskbar, [id*="taskbar" i], [role="menubar"]',
+        'header, nav, [role="banner"], #navbar, [id*="navbar" i], #taskbar, [id*="taskbar" i], [role="menubar"]',
       );
       const inLogoContainer = svg.closest('[class*="logo" i], [id*="logo" i]');
       const inHeaderNavArea = !!inHeaderNav;
@@ -2170,12 +2276,63 @@ export const getBrandingScript = () => String.raw`
       }
     });
 
-    const seen = new Set();
-    const uniqueCandidates = logoCandidates.filter(candidate => {
-      if (seen.has(candidate.src)) return false;
-      seen.add(candidate.src);
-      return true;
+    // Fallback: top-of-page img/svg inside a link to home (catches first image in body, custom nav, etc.)
+    const TOP_PAGE_THRESHOLD_PX = 500;
+    const homeLinks = querySelectorAllIncludingShadowRoots('a[href]').filter(a => isHomeHref(a.getAttribute('href') || ''));
+    const fallbackCandidates = [];
+    homeLinks.forEach(link => {
+      const imgs = link.querySelectorAll('img, svg');
+      imgs.forEach(el => {
+        const rect = el.getBoundingClientRect();
+        const inTop = rect.top >= 0 && rect.top < TOP_PAGE_THRESHOLD_PX;
+        const hasSize = rect.width > 0 && rect.height > 0;
+        if (inTop && hasSize) fallbackCandidates.push({ el, top: rect.top, left: rect.left });
+      });
     });
+    fallbackCandidates.sort((a, b) => (a.top - b.top) || (a.left - b.left));
+    fallbackCandidates.forEach(({ el }) => collectLogoCandidate(el, 'fallback-top-home-link'));
+
+    // Helper: candidate came from home-link selector (strongest logo signal)
+    const isHomeLinkSource = (c) =>
+      (typeof c.source === 'string' && (
+        c.source.indexOf('href="/"') !== -1 ||
+        c.source.indexOf('href="./"') !== -1 ||
+        c.source === 'fallback-top-home-link'
+      ));
+
+    // Dedupe by src: prefer home-link source, then visible variant, then larger area
+    const bySrc = new Map();
+    logoCandidates.forEach(candidate => {
+      const existing = bySrc.get(candidate.src);
+      if (!existing) {
+        bySrc.set(candidate.src, candidate);
+        return;
+      }
+      const candidateFromHomeLink = isHomeLinkSource(candidate);
+      const existingFromHomeLink = isHomeLinkSource(existing);
+      if (candidateFromHomeLink && !existingFromHomeLink) {
+        bySrc.set(candidate.src, candidate);
+        return;
+      }
+      if (!candidateFromHomeLink && existingFromHomeLink) {
+        return;
+      }
+      const candidateVisible = !!candidate.isVisible;
+      const existingVisible = !!existing.isVisible;
+      if (candidateVisible && !existingVisible) {
+        bySrc.set(candidate.src, candidate);
+        return;
+      }
+      if (!candidateVisible && existingVisible) {
+        return;
+      }
+      const area = (candidate.position.width || 0) * (candidate.position.height || 0);
+      const existingArea = (existing.position.width || 0) * (existing.position.height || 0);
+      if (area > existingArea) {
+        bySrc.set(candidate.src, candidate);
+      }
+    });
+    const uniqueCandidates = Array.from(bySrc.values());
 
     if (debugLogo) {
       console.log('🔥 [LOGO DEBUG] Summary:', {
@@ -2212,6 +2369,12 @@ export const getBrandingScript = () => String.raw`
     if (candidatesToPick.length > 0) {
       const best = candidatesToPick.reduce((best, candidate) => {
         if (!best) return candidate;
+
+        // Strongest signal: img in link to home (e.g. <a href="/"><img src="Logo.svg"></a>) — prefer over nav menu SVGs even when tiny/hidden
+        const candidateHomeLinkImg = !candidate.isSvg && !!candidate.indicators.hrefMatch && (candidate.indicators.inHeader || isHomeLinkSource(candidate));
+        const bestHomeLinkImg = !best.isSvg && !!best.indicators.hrefMatch && (best.indicators.inHeader || isHomeLinkSource(best));
+        if (candidateHomeLinkImg && !bestHomeLinkImg) return candidate;
+        if (!candidateHomeLinkImg && bestHomeLinkImg) return best;
 
         const candidateArea = candidate.position.width * candidate.position.height;
         const bestArea = best.position.width * best.position.height;
@@ -2274,12 +2437,50 @@ export const getBrandingScript = () => String.raw`
       console.log('🔥 [LOGO DEBUG] No candidates to pick from', uniqueCandidates.length, 'unique candidates');
     }
 
-    if (debugLogo) {
-      console.log('🔥 [LOGO DEBUG] Final return:', {
-        imagesCount: imgs.length,
-        logoCandidatesCount: uniqueCandidates.length,
-        images: imgs.map(i => ({ type: i.type, src: i.src.substring(0, 80) + '...' })),
+    if (debugLogo && debugStats) {
+      const keySelectors = [
+        "header a img",
+        "a[data-tracking-type*=\"logo\" i] img",
+        "[class*=\"header-logo\" i] img",
+        "[class*=\"container-logo\" i] a img",
+      ];
+      const firstMatchesBySelector = {};
+      keySelectors.forEach((sel) => {
+        const matches = querySelectorAllIncludingShadowRoots(sel);
+        firstMatchesBySelector[sel] = matches.slice(0, 3).map((el) => {
+          const rect = el.getBoundingClientRect?.();
+          const a = el.closest?.("a");
+          return {
+            tag: el.tagName,
+            class: (el.getAttribute?.("class") || "").slice(0, 80),
+            src: (el.src || el.getAttribute?.("src") || "").slice(0, 80),
+            alt: (el.alt || el.getAttribute?.("alt") || "").slice(0, 60),
+            parentHref: a ? (a.getAttribute?.("href") || "").slice(0, 60) : "",
+            rect: rect ? { w: Math.round(rect.width), h: Math.round(rect.height), top: Math.round(rect.top), left: Math.round(rect.left) } : null,
+          };
+        });
       });
+      const copyPayload = {
+        selectorCounts: debugStats.selectorCounts,
+        skipped: debugStats.skipped,
+        skipSamples: debugStats.skipSamples,
+        added: debugStats.added,
+        candidateSamples: debugStats.candidateSamples,
+        firstMatchesBySelector,
+        uniqueCandidatesCount: uniqueCandidates.length,
+        uniqueCandidatesPreview: uniqueCandidates.slice(0, 15).map((c) => ({
+          src: c.src ? c.src.slice(0, 100) + (c.src.length > 100 ? "..." : "") : "",
+          alt: c.alt || "",
+          href: c.href ? (c.href.length > 60 ? c.href.slice(0, 60) + "..." : c.href) : "",
+          location: c.location,
+          isVisible: c.isVisible,
+          position: c.position,
+          source: c.source,
+        })),
+        imagesCount: imgs.length,
+      };
+      console.log("🔥 [LOGO DEBUG] Copy this JSON (paste to debug):");
+      console.log(JSON.stringify(copyPayload, null, 2));
     }
 
     return { images: imgs, logoCandidates: uniqueCandidates };
@@ -2635,6 +2836,8 @@ export const getBrandingScript = () => String.raw`
   const backgroundCandidates = getBackgroundCandidates();
   
   const pageBackground = backgroundCandidates.length > 0 ? backgroundCandidates[0].color : null;
+  const pageTitle = document.title || '';
+  const pageUrl = typeof window !== 'undefined' && window.location ? window.location.href : '';
 
   return {
     branding: {
@@ -2643,6 +2846,8 @@ export const getBrandingScript = () => String.raw`
       images: imageData.images,
       logoCandidates: imageData.logoCandidates,
       brandName,
+      pageTitle,
+      pageUrl,
       typography,
       frameworkHints,
       colorScheme,

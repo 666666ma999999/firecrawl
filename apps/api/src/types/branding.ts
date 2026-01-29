@@ -114,6 +114,10 @@ export interface BrandingProfile {
   };
   images?: {
     logo?: string | null;
+    /** Logo link URL (parent <a href>) when logo is inside a link, e.g. homepage. */
+    logoHref?: string | null;
+    /** Logo alt text from <img alt> or parent <a aria-label>. */
+    logoAlt?: string | null;
     favicon?: string | null;
     ogImage?: string | null;
     [key: string]: string | null | undefined;
@@ -179,6 +183,12 @@ export interface BrandingProfile {
       llmSucceeded: boolean;
       finalSource: "llm" | "heuristic" | "fallback" | "none";
       error?: string;
+      /** Exact AI response for logoSelection (before index mapping/heuristic), for debugging */
+      rawLogoSelection?: {
+        selectedLogoIndex: number;
+        selectedLogoReasoning?: string;
+        confidence: number;
+      };
     };
     buttonClassification: {
       llmCalled: boolean;
