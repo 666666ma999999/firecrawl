@@ -23,6 +23,16 @@ export const getBrandingScript = () => String.raw`
     MIN_ALPHA_THRESHOLD: 0.1,
     MAX_TRANSPARENT_ALPHA: 0.01,
     BUTTON_SELECTOR: 'button,input[type="submit"],input[type="button"],[role=button],[data-primary-button],[data-secondary-button],[data-cta],a.button,a.btn,[class*="btn"],[class*="button"],a[class*="bg-brand"],a[class*="bg-primary"],a[class*="bg-accent"]',
+    // Logo detection thresholds
+    TASKBAR_TOP_THRESHOLD: 80,
+    CONTAINER_TOP_THRESHOLD: 50,
+    TASKBAR_LOGO_MAX_TOP: 120,
+    TASKBAR_LOGO_MAX_LEFT: 450,
+    TASKBAR_LOGO_MIN_WIDTH: 24,
+    TASKBAR_LOGO_MIN_HEIGHT: 12,
+    TOP_PAGE_THRESHOLD_PX: 500,
+    // Button-like element class pattern
+    BUTTON_CLASS_PATTERN: /rounded(-md|-lg|-xl|-full)?|p[xy]?-\d+|border.*rounded|inline-flex.*items-center.*justify-center/,
   };
 
   const styleCache = new WeakMap();
@@ -309,14 +319,8 @@ export const getBrandingScript = () => String.raw`
   };
 
   const checkButtonLikeElement = (el, cs, rect, classNames) => {
-    const hasButtonClasses = 
-      /rounded(-md|-lg|-xl|-full)?/.test(classNames) ||
-      /px-\d+/.test(classNames) ||
-      /py-\d+/.test(classNames) ||
-      /p-\d+/.test(classNames) ||
-      (/border/.test(classNames) && /rounded/.test(classNames)) ||
-      (/inline-flex/.test(classNames) && /items-center/.test(classNames) && /justify-center/.test(classNames));
-    
+    const hasButtonClasses = CONSTANTS.BUTTON_CLASS_PATTERN.test(classNames);
+
     if (hasButtonClasses && rect.width > CONSTANTS.BUTTON_MIN_WIDTH && rect.height > CONSTANTS.BUTTON_MIN_HEIGHT) {
       return true;
     }
@@ -359,10 +363,6 @@ export const getBrandingScript = () => String.raw`
     return false;
   };
 
-  const looksLikeButton = (el) => {
-    return isButtonElement(el);
-  };
-
   const sampleElements = () => {
     const picksSet = new Set();
     
@@ -385,7 +385,7 @@ export const getBrandingScript = () => String.raw`
     
     const allLinks = Array.from(document.querySelectorAll('a')).slice(0, 100);
     for (const link of allLinks) {
-      if (!picksSet.has(link) && looksLikeButton(link)) {
+      if (!picksSet.has(link) && isButtonElement(link)) {
         picksSet.add(link);
       }
     }
@@ -500,7 +500,9 @@ export const getBrandingScript = () => String.raw`
         
         isNavigation = hasNavClass || hasNavRole || inNavContext || isNavLink;
       }
-    } catch (e) {}
+    } catch (e) {
+      recordError('getStyleSnapshot-navigation-detection', e);
+    }
 
     let text = "";
     if (el.tagName.toLowerCase() === 'input' && (el.type === 'submit' || el.type === 'button')) {
@@ -598,75 +600,8 @@ export const getBrandingScript = () => String.raw`
   const findImages = () => {
     const imgs = [];
     const logoCandidates = [];
-    const debugLogo =
-      typeof window !== "undefined" &&
-      !!window.__FIRECRAWL_DEBUG_BRANDING_LOGO;
-    const debugStats = debugLogo
-      ? {
-          attempted: 0,
-          added: 0,
-          skipped: {},
-          skipSamples: [],
-          candidateSamples: [],
-          selectorCounts: {},
-        }
-      : null;
-    const truncate = (value, max = 120) => {
-      if (!value) return "";
-      const str = String(value);
-      return str.length > max ? str.slice(0, max) + "..." : str;
-    };
-    const getDebugMeta = (el, rect) => {
-      if (!el) return {};
-      let href = "";
-      try {
-        const anchor = el.closest ? el.closest("a") : null;
-        href = anchor ? anchor.getAttribute("href") || "" : "";
-      } catch {}
-      return {
-        tag: el.tagName ? el.tagName.toLowerCase() : "",
-        id: el.id || "",
-        className: getClassNameString(el),
-        src: truncate(el.src || el.getAttribute?.("href") || ""),
-        alt: el.alt || "",
-        ariaLabel: el.getAttribute?.("aria-label") || "",
-        href: truncate(href),
-        rect: rect
-          ? {
-              w: Math.round(rect.width || 0),
-              h: Math.round(rect.height || 0),
-              top: Math.round(rect.top || 0),
-              left: Math.round(rect.left || 0),
-            }
-          : undefined,
-      };
-    };
-    const recordSkip = (reason, el, rect, details) => {
-      if (!debugStats) return;
-      debugStats.skipped[reason] = (debugStats.skipped[reason] || 0) + 1;
-      if (debugStats.skipSamples.length < 10) {
-        debugStats.skipSamples.push({
-          reason,
-          details,
-          ...getDebugMeta(el, rect),
-        });
-      }
-    };
-    const recordAdd = (candidate) => {
-      if (!debugStats) return;
-      debugStats.added += 1;
-      if (debugStats.candidateSamples.length < 5) {
-        debugStats.candidateSamples.push({
-          src: truncate(candidate.src),
-          alt: candidate.alt || "",
-          location: candidate.location,
-          isSvg: candidate.isSvg,
-          indicators: candidate.indicators,
-          width: Math.round(candidate.position?.width || 0),
-          height: Math.round(candidate.position?.height || 0),
-        });
-      }
-    };
+    const spriteMetadataMap = new WeakMap(); // Store sprite metadata without mutating DOM
+
     const push = (src, type) => {
       if (src) imgs.push({ type, src });
     };
@@ -697,152 +632,69 @@ export const getBrandingScript = () => String.raw`
       "twitter",
     );
 
+    // Helper to ensure SVG data URIs are properly encoded
+    const ensureSvgEncoded = (url) => {
+      if (!url || !url.startsWith('data:image/svg+xml')) return url;
+
+      // Check if already properly encoded
+      const isAlreadyEncoded = url.includes('charset=utf-8') ||
+        (url.includes('data:image/svg+xml,') && url.split('data:image/svg+xml,')[1]?.startsWith('%'));
+
+      if (isAlreadyEncoded) return url;
+
+      // Extract the SVG content
+      let svgContent = '';
+      if (url.includes('charset=utf-8,')) {
+        svgContent = url.split('charset=utf-8,')[1];
+      } else if (url.includes('data:image/svg+xml,')) {
+        svgContent = url.split('data:image/svg+xml,')[1];
+      }
+
+      if (!svgContent) return url;
+
+      // Clean and encode
+      const cleanSvg = svgContent.replace(/\\"/g, '"').replace(/\\'/g, "'");
+      try {
+        return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(cleanSvg);
+      } catch (e) {
+        return 'data:image/svg+xml;charset=utf-8,' + cleanSvg.replace(/"/g, '%22').replace(/'/g, '%27');
+      }
+    };
+
     const extractBackgroundImageUrl = (bgImage) => {
       if (!bgImage || bgImage === 'none') return null;
-      
+
+      // Helper to decode HTML entities in URLs
+      const decodeHtmlEntities = (url) => {
+        if (url.includes('&quot;') || url.includes('&lt;') || url.includes('&gt;')) {
+          return url.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
+        }
+        return url;
+      };
+
       // Try to match url("...") or url('...') first - handle quoted URLs
-      // This handles both data URIs and regular URLs with quotes
       const quotedMatch = bgImage.match(/url\((["'])(.*?)\1\)/);
       if (quotedMatch) {
-        let url = quotedMatch[2];
-        // Handle HTML entities that might still be encoded
-        if (url.includes('&quot;') || url.includes('&lt;') || url.includes('&gt;')) {
-          url = url.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-        }
-        
-        // For data URIs with SVG content, ensure proper URL encoding
-        // Check if it's already URL-encoded (has charset=utf-8 or starts with %)
-        if (url.startsWith('data:image/svg+xml')) {
-          // Check if already encoded (has charset=utf-8 or starts with %)
-          const isAlreadyEncoded = url.includes('charset=utf-8') || 
-                                   (url.includes('data:image/svg+xml,') && url.split('data:image/svg+xml,')[1]?.startsWith('%'));
-          
-          if (!isAlreadyEncoded) {
-            // Extract the SVG content (handle both with and without charset)
-            let svgContent = '';
-            if (url.includes('charset=utf-8,')) {
-              svgContent = url.split('charset=utf-8,')[1];
-            } else if (url.includes('data:image/svg+xml,')) {
-              svgContent = url.split('data:image/svg+xml,')[1];
-            }
-            
-            if (svgContent) {
-              // Remove any escaped quotes that might cause XML parsing errors
-              let cleanSvg = svgContent.replace(/\\"/g, '"').replace(/\\'/g, "'");
-              // URL-encode the SVG content to ensure it's valid
-              try {
-                const encodedSvg = encodeURIComponent(cleanSvg);
-                url = 'data:image/svg+xml;charset=utf-8,' + encodedSvg;
-              } catch (e) {
-                // If encoding fails, try to at least fix common issues
-                url = 'data:image/svg+xml;charset=utf-8,' + cleanSvg.replace(/"/g, '%22').replace(/'/g, '%27');
-              }
-            }
-          }
-          // If already encoded, use as-is (it's already valid)
-        }
-        
-        if (debugLogo && (url.includes('cal.com') || url.includes('Cal.com') || url.startsWith('data:'))) {
-          console.log('🔥 [LOGO DEBUG] Extracted quoted URL:', {
-            original: bgImage.substring(0, 200) + '...',
-            extracted: url.substring(0, 100) + '...',
-            isDataUri: url.startsWith('data:'),
-          });
-        }
-        
-        return url;
+        let url = decodeHtmlEntities(quotedMatch[2]);
+        return ensureSvgEncoded(url);
       }
-      
-      // Try to match url(...) without quotes
-      // For data URIs, match until the closing paren (they can be very long)
+
+      // Try to match url(...) without quotes for data URIs
       const unquotedMatch = bgImage.match(/url\((data:[^)]+)\)/);
       if (unquotedMatch) {
-        let url = unquotedMatch[1];
-        // Handle HTML entities
-        if (url.includes('&quot;') || url.includes('&lt;') || url.includes('&gt;')) {
-          url = url.replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>');
-        }
-        
-        // For data URIs with SVG content, ensure proper URL encoding
-        // Check if it's already URL-encoded (has charset=utf-8 or starts with %)
-        if (url.startsWith('data:image/svg+xml')) {
-          // Check if already encoded (has charset=utf-8 or starts with %)
-          const isAlreadyEncoded = url.includes('charset=utf-8') || 
-                                   url.includes('data:image/svg+xml,') && url.split('data:image/svg+xml,')[1]?.startsWith('%');
-          
-          if (!isAlreadyEncoded) {
-            // Extract the SVG content (handle both with and without charset)
-            let svgContent = '';
-            if (url.includes('charset=utf-8,')) {
-              svgContent = url.split('charset=utf-8,')[1];
-            } else if (url.includes('data:image/svg+xml,')) {
-              svgContent = url.split('data:image/svg+xml,')[1];
-            }
-            
-            if (svgContent) {
-              // Remove any escaped quotes that might cause XML parsing errors
-              let cleanSvg = svgContent.replace(/\\"/g, '"').replace(/\\'/g, "'");
-              // URL-encode the SVG content to ensure it's valid
-              try {
-                const encodedSvg = encodeURIComponent(cleanSvg);
-                url = 'data:image/svg+xml;charset=utf-8,' + encodedSvg;
-              } catch (e) {
-                // If encoding fails, try to at least fix common issues
-                url = 'data:image/svg+xml;charset=utf-8,' + cleanSvg.replace(/"/g, '%22').replace(/'/g, '%27');
-              }
-            }
-          }
-          // If already encoded, use as-is (it's already valid)
-        }
-        
-        if (debugLogo && (url.includes('cal.com') || url.includes('Cal.com'))) {
-          console.log('🔥 [LOGO DEBUG] Extracted unquoted data URI:', {
-            original: bgImage.substring(0, 200) + '...',
-            extracted: url.substring(0, 100) + '...',
-          });
-        }
-        
-        return url;
+        let url = decodeHtmlEntities(unquotedMatch[1]);
+        return ensureSvgEncoded(url);
       }
-      
+
       // Fallback: try simple pattern for regular URLs
       // Use non-greedy [^)]+? so multi-layer backgrounds like url(a), url(b) yield only the first URL
       const simpleMatch = bgImage.match(/url\(([^)]+?)\)/);
       if (simpleMatch) {
-        let url = simpleMatch[1].trim().replace(/^["']|["']$/g, ''); // Remove surrounding quotes if any
-        
-        // For data URIs with SVG content, ensure proper URL encoding
-        // Check if it's already URL-encoded (has charset=utf-8 or starts with %)
-        if (url.startsWith('data:image/svg+xml')) {
-          // Check if already encoded (has charset=utf-8 or starts with %)
-          const isAlreadyEncoded = url.includes('charset=utf-8') || 
-                                   url.includes('data:image/svg+xml,') && url.split('data:image/svg+xml,')[1]?.startsWith('%');
-          
-          if (!isAlreadyEncoded) {
-            // Extract the SVG content (handle both with and without charset)
-            let svgContent = '';
-            if (url.includes('charset=utf-8,')) {
-              svgContent = url.split('charset=utf-8,')[1];
-            } else if (url.includes('data:image/svg+xml,')) {
-              svgContent = url.split('data:image/svg+xml,')[1];
-            }
-            
-            if (svgContent) {
-              let cleanSvg = svgContent.replace(/\\"/g, '"').replace(/\\'/g, "'");
-              try {
-                const encodedSvg = encodeURIComponent(cleanSvg);
-                url = 'data:image/svg+xml;charset=utf-8,' + encodedSvg;
-              } catch (e) {
-                url = 'data:image/svg+xml;charset=utf-8,' + cleanSvg.replace(/"/g, '%22').replace(/'/g, '%27');
-              }
-            }
-          }
-          // If already encoded, use as-is (it's already valid)
-        }
-        
+        let url = simpleMatch[1].trim().replace(/^["']|["']$/g, '');
+        url = ensureSvgEncoded(url);
         return url;
       }
-      
+
       return null;
     };
 
@@ -908,29 +760,8 @@ export const getBrandingScript = () => String.raw`
     const collectLogoCandidate = (el, source) => {
       const rect = el.getBoundingClientRect();
       const style = getComputedStyleCached(el);
-      if (debugStats) {
-        debugStats.attempted += 1;
-      }
-      
-      // Debug logging for specific cases
-      const dataName = el.getAttribute('data-framer-name') || el.getAttribute('data-name') || '';
       const parentLink = el.closest('a');
-      const parentAria = parentLink?.getAttribute('aria-label') || '';
-      const parentHref = parentLink?.getAttribute('href') || '';
-      const isCalComCase = dataName.toLowerCase().includes('cal.com logo') || 
-                          (parentAria.toLowerCase().includes('cal.com') && parentHref === './');
-      
-      if (debugLogo && isCalComCase) {
-        console.log('🔥 [LOGO DEBUG] collectLogoCandidate called:', {
-          source,
-          tag: el.tagName,
-          dataName,
-          parentAria,
-          parentHref,
-          rect: { w: rect.width, h: rect.height, top: rect.top, left: rect.left },
-        });
-      }
-      
+
       const isVisible = (
         rect.width > 0 &&
         rect.height > 0 &&
@@ -938,44 +769,25 @@ export const getBrandingScript = () => String.raw`
         style.visibility !== "hidden" &&
         style.opacity !== "0"
       );
-      
-      if (debugLogo && isCalComCase) {
-        console.log('🔥 [LOGO DEBUG] Visibility check:', { isVisible, width: rect.width, height: rect.height });
-      }
 
       // Check for CSS background-image logos (common pattern)
       const bgImage = style.getPropertyValue('background-image');
       const bgImageUrl = extractBackgroundImageUrl(bgImage);
-      
-      // Check for logo indicators in various places (reuse parentLink from debug section above)
+
+      // Check for logo indicators
       const parentAriaLabel = parentLink?.getAttribute('aria-label') || '';
       const hasLogoAriaLabel = /logo|home|brand/i.test(parentAriaLabel);
       const hasLogoDataAttr = el.getAttribute('data-framer-name')?.toLowerCase().includes('logo') ||
                               el.getAttribute('data-name')?.toLowerCase().includes('logo');
       const inHeaderNav = el.closest('header, nav, [role="banner"]') !== null;
       const hasHomeHref = parentLink && isHomeHref(parentLink.getAttribute('href') || '');
-      
+
       // Skip "minimized" logo variants (e.g. Salesforce: same <a> has full logo + collapsed nav mini); prefer the main visible one
       const elClass = (el.getAttribute('class') || '').toLowerCase();
       if (/minimized/.test(elClass) && inHeaderNav) {
-        recordSkip("logo-minimized-variant", el, rect);
         return;
       }
 
-      if (debugLogo && isCalComCase) {
-        console.log('🔥 [LOGO DEBUG] Background image check:', {
-          hasBgImage: !!bgImage && bgImage !== 'none',
-          bgImagePreview: bgImage ? bgImage.substring(0, 200) + '...' : null,
-          bgImageUrl: bgImageUrl ? bgImageUrl.substring(0, 100) + '...' : null,
-          hasLogoDataAttr,
-          hasLogoAriaLabel,
-          hasHomeHref,
-          inHeaderNav,
-          parentAriaLabel,
-          parentHref: parentLink?.getAttribute('href'),
-        });
-      }
-      
       const hasBackgroundLogo = bgImageUrl && (
         /logo/i.test(bgImageUrl) ||
         el.closest('[class*="logo" i], [id*="logo" i]') !== null ||
@@ -991,11 +803,10 @@ export const getBrandingScript = () => String.raw`
         const ogImageSrc = document.querySelector('meta[property="og:image"]')?.getAttribute('content') || '';
         const twitterImageSrc = document.querySelector('meta[name="twitter:image"]')?.getAttribute('content') || '';
         
-        if ((ogImageSrc && imgSrc.includes(ogImageSrc)) || 
+        if ((ogImageSrc && imgSrc.includes(ogImageSrc)) ||
             (twitterImageSrc && imgSrc.includes(twitterImageSrc)) ||
             (ogImageSrc && ogImageSrc.includes(imgSrc)) ||
             (twitterImageSrc && twitterImageSrc.includes(imgSrc))) {
-          recordSkip("social-image-match", el, rect, { imgSrc });
           return;
         }
       }
@@ -1017,7 +828,7 @@ export const getBrandingScript = () => String.raw`
         const taskbarOrMenubar = el.closest('#taskbar, [id*="taskbar" i], [role="menubar"]');
         if (taskbarOrMenubar) {
           const barRect = taskbarOrMenubar.getBoundingClientRect();
-          if (barRect.top <= 80 && barRect.width > 0 && barRect.height > 0) {
+          if (barRect.top <= CONSTANTS.TASKBAR_TOP_THRESHOLD && barRect.width > 0 && barRect.height > 0) {
             inTopLevelNav = true;
           }
         }
@@ -1026,7 +837,7 @@ export const getBrandingScript = () => String.raw`
         if (!inTopLevelNav && topLevelContainer) {
           const containerRect = topLevelContainer.getBoundingClientRect();
           const containerStyle = getComputedStyleCached(topLevelContainer);
-          const isAtTop = containerRect.top <= 50; // Within 50px of top
+          const isAtTop = containerRect.top <= CONSTANTS.CONTAINER_TOP_THRESHOLD;
           const hasNavLikeContent = topLevelContainer.querySelector('nav, a[href="/"], a[href="./"]') !== null;
           const hasStickyOrFixed = /sticky|fixed/i.test(containerStyle.position) || 
                                    /top-0|top:0|top:\s*0/i.test(containerStyle.cssText);
@@ -1050,7 +861,6 @@ export const getBrandingScript = () => String.raw`
       const langSwitcherParent = el.closest('ul[class*="lang"], li[class*="lang"], div[class*="lang"], nav[class*="lang"], [id*="lang"], [id*="language"]');
       
       if (isSmallFlagImage) {
-        recordSkip("small-flag", el, rect);
         return;
       }
       
@@ -1068,10 +878,6 @@ export const getBrandingScript = () => String.raw`
         const hasExplicitLangIndicator = /lang-item|language-list|lang-switch|language-switch|lang-select|language-select/i.test(parentClasses);
         
         if (isLanguageList || isLanguageItem || isLanguageContainer || hasExplicitLangIndicator) {
-          recordSkip("language-switcher", el, rect, {
-            parentTagName: parentTagName,
-            parentClasses: parentClasses,
-          });
           return;
         }
       }
@@ -1088,8 +894,11 @@ export const getBrandingScript = () => String.raw`
         // Allow if inside a top-level bar (taskbar, menubar) at top - first/primary visual is often the logo (e.g. PostHog)
         // No link - just a button that opens menu; logo is the main visible brand at top-left
         const inTaskbarOrMenubar = el.closest('#taskbar, [id*="taskbar" i], [role="menubar"]');
-        const isLogoInTopBar = inTaskbarOrMenubar && rect.top <= 120 && rect.left <= 450 &&
-          rect.width >= 24 && rect.height >= 12; // Wordmark-sized, not tiny icon
+        const isLogoInTopBar = inTaskbarOrMenubar &&
+          rect.top <= CONSTANTS.TASKBAR_LOGO_MAX_TOP &&
+          rect.left <= CONSTANTS.TASKBAR_LOGO_MAX_LEFT &&
+          rect.width >= CONSTANTS.TASKBAR_LOGO_MIN_WIDTH &&
+          rect.height >= CONSTANTS.TASKBAR_LOGO_MIN_HEIGHT;
         
         // Also allow if the button-like element itself has logo indicators
         const buttonHasLogoIndicators = insideButton && (
@@ -1106,7 +915,6 @@ export const getBrandingScript = () => String.raw`
         );
         
         if (!isLogoInNavContext && !isLogoInTopBar && !buttonHasLogoIndicators && !elementHasLogoIndicators) {
-          recordSkip("inside-button", el, rect);
           return;
         }
       }
@@ -1135,7 +943,6 @@ export const getBrandingScript = () => String.raw`
       const isSearchIcon = hasSearchClass || hasSearchId || hasSearchAriaLabel || isInSearchForm || !!inSearchButton;
       
       if (isSearchIcon) {
-        recordSkip("search-icon", el, rect);
         return;
       }
       
@@ -1161,7 +968,6 @@ export const getBrandingScript = () => String.raw`
           isHomeHref(parentLinkHref);
         
         if (!hasExplicitLogoIndicator) {
-          recordSkip("ui-icon", el, rect);
           return;
         }
       }
@@ -1169,7 +975,6 @@ export const getBrandingScript = () => String.raw`
       // Skip img/svg with menu/hamburger/toggle alt text (e.g. "mobile menu open", "Toggle Navigation") — not the brand logo
       const elAlt = (el.getAttribute?.('alt') || (el).alt || '').toLowerCase();
       if (/mobile menu|hamburger|toggle navigation|menu open|menu close|close-mobile|hamburger-img/i.test(elAlt)) {
-        recordSkip("menu-hamburger-alt", el, rect);
         return;
       }
       
@@ -1204,22 +1009,15 @@ export const getBrandingScript = () => String.raw`
             const linkUrl = new URL(href, window.location.origin);
             const linkHostname = linkUrl.hostname.toLowerCase();
             const isSameSite = isSameBrandHost(currentHostname, linkHostname);
-            // Only skip external-service-domain when the link goes to a different site (e.g. footer Slack icon on example.com). When we're on slack.com and the logo links to slack.com, do not skip.
+            // Only skip external-service-domain when the link goes to a different site
             if (!isSameSite && externalServiceDomains.some(domain => hrefLower.includes(domain))) {
-              recordSkip("external-service-domain", el, rect, { href });
               return;
             }
-            
+
             if (!isSameSite) {
-              recordSkip("external-link-different-host", el, rect, {
-                href,
-                currentHostname,
-                linkHostname,
-              });
               return;
             }
           } catch (e) {
-            recordSkip("external-link-parse-error", el, rect, { href });
             return;
           }
         }
@@ -1353,11 +1151,9 @@ export const getBrandingScript = () => String.raw`
                   src = "data:image/svg+xml;utf8," + encodeURIComponent(serializer.serializeToString(raw));
                 } catch (e3) {
                   recordError("svg-strong-candidate-serialize", e3);
-                  recordSkip("svg-serialize-failed", el, rect);
                   return;
                 }
               } else {
-                recordSkip("svg-serialize-failed", el, rect);
                 return;
               }
             }
@@ -1370,23 +1166,12 @@ export const getBrandingScript = () => String.raw`
         // For divs with strong logo indicators, always use background-image if present
         if (!src && bgImageUrl) {
           // Check if this should be treated as a logo
-          const shouldTreatAsLogo = hasBackgroundLogo || 
-                                    hasLogoDataAttr || 
-                                    hasLogoAriaLabel || 
+          const shouldTreatAsLogo = hasBackgroundLogo ||
+                                    hasLogoDataAttr ||
+                                    hasLogoAriaLabel ||
                                     hasHomeHref ||
                                     (parentLink && inHeaderNav);
-          
-          if (debugLogo && isCalComCase) {
-            console.log('🔥 [LOGO DEBUG] Should treat as logo?', {
-              shouldTreatAsLogo,
-              hasBackgroundLogo,
-              hasLogoDataAttr,
-              hasLogoAriaLabel,
-              hasHomeHref,
-              inHeaderNav: parentLink && inHeaderNav,
-            });
-          }
-          
+
           if (shouldTreatAsLogo) {
             // Check if this is a sprite sheet
             const bgPosition = style.getPropertyValue('background-position');
@@ -1538,7 +1323,7 @@ export const getBrandingScript = () => String.raw`
                 } else {
                   // Store metadata for backend extraction
                   src = absoluteUrl;
-                  el._spriteMetadata = {
+                  spriteMetadataMap.set(el, {
                     isSprite: true,
                     spriteUrl: absoluteUrl,
                     position: spritePosition,
@@ -1546,7 +1331,7 @@ export const getBrandingScript = () => String.raw`
                     elementHeight,
                     backgroundSize: bgSize || 'auto',
                     backgroundPosition: bgPosition,
-                  };
+                  });
                 }
               } else {
                 // Not a sprite sheet, use URL as-is
@@ -1601,23 +1386,7 @@ export const getBrandingScript = () => String.raw`
         // Check if src is a data URI with SVG content
         const isSvgDataUri = src.startsWith('data:image/svg+xml');
         const finalIsSvg = isSvg || isSvgDataUri;
-        
-        // Debug logging for home links (even if not Cal.com case)
-        const isHomeLinkCase = hasHomeHref && (isSvg || isSvgDataUri);
-        
-        if (debugLogo && (isCalComCase || isHomeLinkCase)) {
-          console.log('🔥 [LOGO DEBUG] Adding logo candidate:', {
-            src: src.substring(0, 100) + '...',
-            isSvg: finalIsSvg,
-            isVisible,
-            location: finalInHeader ? "header" : "body",
-            indicators: { inHeader: !!finalInHeader, altMatch, srcMatch, classMatch, hrefMatch },
-            href,
-            hasHomeHref,
-            source,
-          });
-        }
-        
+
         const title = finalIsSvg
           ? (el.querySelector?.('title')?.textContent?.trim() || undefined)
           : (el.getAttribute?.('title') || (el.title !== undefined && el.title !== '' ? el.title : undefined));
@@ -1669,21 +1438,12 @@ export const getBrandingScript = () => String.raw`
         };
         
         // Add sprite metadata if this is a sprite sheet
-        if (el._spriteMetadata) {
-          logoCandidate.sprite = el._spriteMetadata;
+        const spriteData = spriteMetadataMap.get(el);
+        if (spriteData) {
+          logoCandidate.sprite = spriteData;
         }
         
         logoCandidates.push(logoCandidate);
-        recordAdd(logoCandidates[logoCandidates.length - 1]);
-      } else {
-        if (debugLogo && isCalComCase) {
-          console.log('🔥 [LOGO DEBUG] Skipping - missing src', {
-            elSrc: el.src,
-            bgImageUrl: bgImageUrl ? bgImageUrl.substring(0, 100) + '...' : null,
-            shouldTreatAsLogo: hasBackgroundLogo || hasLogoDataAttr || hasLogoAriaLabel || hasHomeHref || (parentLink && inHeaderNav),
-          });
-        }
-        recordSkip("missing-src", el, rect);
       }
     };
 
@@ -1724,21 +1484,6 @@ export const getBrandingScript = () => String.raw`
 
     allLogoSelectors.forEach(selector => {
       const matches = querySelectorAllIncludingShadowRoots(selector);
-      if (debugStats) {
-        debugStats.selectorCounts[selector] = matches.length;
-      }
-      if (debugLogo && matches.length > 0 && (selector.includes('href="/"') || selector.includes('href="./"'))) {
-        console.log('🔥 [LOGO DEBUG] Home link selector matched:', selector, 'found', matches.length, 'elements');
-        matches.forEach((el, idx) => {
-          const parentLink = el.closest('a');
-          const href = parentLink?.getAttribute('href') || '';
-          console.log('🔥 [LOGO DEBUG] Home link element', idx + 1, ':', {
-            tag: el.tagName,
-            href,
-            rect: { width: el.getBoundingClientRect().width, height: el.getBoundingClientRect().height },
-          });
-        });
-      }
       matches.forEach(el => {
         collectLogoCandidate(el, selector);
       });
@@ -1793,24 +1538,16 @@ export const getBrandingScript = () => String.raw`
     
     logoContainerSelectors.forEach(selector => {
       const matches = querySelectorAllIncludingShadowRoots(selector);
-      if (debugStats) {
-        debugStats.selectorCounts[selector] = matches.length;
-      }
-      if (debugLogo && matches.length > 0) {
-        console.log('🔥 [LOGO DEBUG] Selector matched:', selector, 'found', matches.length, 'elements');
-      }
       matches.forEach(el => {
         const style = getComputedStyleCached(el);
         const bgImage = style.getPropertyValue('background-image');
         const bgImageUrl = extractBackgroundImageUrl(bgImage);
-        
+
         // Check if element itself has logo in class name (not just parent)
-        // Handle both className (string) and getAttribute('class') for compatibility
         const elClassName = (typeof el.className === 'string' ? el.className : el.getAttribute('class')) || '';
         const elHasLogoClass = /logo/i.test(elClassName);
-        
+
         if (bgImageUrl) {
-          // Check if this looks like a logo (has reasonable size and is in header/logo container)
           const rect = el.getBoundingClientRect();
           const isVisible = (
             rect.width > 0 &&
@@ -1820,164 +1557,65 @@ export const getBrandingScript = () => String.raw`
             style.opacity !== "0"
           );
           const hasReasonableSize = rect.width >= CONSTANTS.MIN_LOGO_SIZE && rect.height >= CONSTANTS.MIN_LOGO_SIZE;
-          const inLogoContext =
-            el.closest(
-              '[class*="logo" i], [id*="logo" i], header, nav, [role="banner"]',
-            ) !== null;
-          
-          // Additional checks for elements inside links
+          const inLogoContext = el.closest('[class*="logo" i], [id*="logo" i], header, nav, [role="banner"]') !== null;
+
           const parentLink = el.closest('a');
           const hasLogoDataAttr = el.getAttribute('data-framer-name')?.toLowerCase().includes('logo') ||
                                   el.getAttribute('data-name')?.toLowerCase().includes('logo');
           const hasLogoAriaLabel = parentLink && /logo|home|brand/i.test(parentLink.getAttribute('aria-label') || '');
           const hasHomeHref = parentLink && isHomeHref(parentLink.getAttribute('href') || '');
-          
-          // For elements with strong logo indicators (logo class, data attributes, aria-labels, home hrefs),
-          // be more lenient with size requirements - they might be small but still valid logos
+
           const hasStrongLogoIndicators = elHasLogoClass || hasLogoDataAttr || hasLogoAriaLabel || hasHomeHref;
-          const sizeRequirement = hasStrongLogoIndicators 
-            ? (rect.width > 0 && rect.height > 0) // Just needs to have some size
-            : hasReasonableSize; // Otherwise require minimum size
-          
-          if (debugLogo && (elHasLogoClass || elClassName.includes('shape'))) {
-            console.log('🔥 [LOGO DEBUG] Checking element with logo class:', {
-              selector,
-              tag: el.tagName,
-              className: elClassName,
-              hasBgImage: !!bgImageUrl,
-              isVisible,
-              sizeRequirement,
-              hasReasonableSize,
-              inLogoContext,
-              hasStrongLogoIndicators,
-              rect: { width: rect.width, height: rect.height },
-            });
-          }
-          
+          const sizeRequirement = hasStrongLogoIndicators
+            ? (rect.width > 0 && rect.height > 0)
+            : hasReasonableSize;
+
           if (isVisible && sizeRequirement && (inLogoContext || hasStrongLogoIndicators)) {
             collectLogoCandidate(el, 'background-image-logo');
-          } else if (debugLogo && (elHasLogoClass || elClassName.includes('shape'))) {
-            console.log('🔥 [LOGO DEBUG] Element filtered out:', {
-              isVisible,
-              sizeRequirement,
-              inLogoContext,
-              hasStrongLogoIndicators,
-            });
           }
-        } else if (debugLogo && (elHasLogoClass || elClassName.includes('shape'))) {
-          console.log('🔥 [LOGO DEBUG] Element has no background-image:', {
-            selector,
-            tag: el.tagName,
-            className: elClassName,
-            bgImage: bgImage ? bgImage.substring(0, 100) + '...' : 'none',
-          });
         }
       });
     });
 
     // Additional pass: Check all divs and spans with background-image that have strong logo indicators
-    // This catches cases where the element might not match the specific selectors above
     const allElementsWithBg = Array.from(document.querySelectorAll('div, span'));
-    if (debugLogo) {
-      console.log('🔥 [LOGO DEBUG] Checking', allElementsWithBg.length, 'total divs/spans for logo indicators');
-    }
-    
+
     const allDivsWithBgImage = allElementsWithBg.filter(el => {
       const style = getComputedStyleCached(el);
       const bgImage = style.getPropertyValue('background-image');
       const bgImageUrl = extractBackgroundImageUrl(bgImage);
-      
-      // Get element properties (needed for both debug and logic)
-      const dataName = el.getAttribute('data-framer-name') || el.getAttribute('data-name') || '';
+
+      if (!bgImageUrl) return false;
+
       const className = el.className || '';
       const parentLink = el.closest('a');
-      const parentAria = parentLink?.getAttribute('aria-label') || '';
-      const parentHref = parentLink?.getAttribute('href') || '';
-      
-      // Debug logging
-      if (debugLogo) {
-        if (dataName.toLowerCase().includes('logo') || className.toLowerCase().includes('logo') || parentAria.toLowerCase().includes('home') || parentHref === './' || parentHref === '/') {
-          console.log('🔥 [LOGO DEBUG] Checking element:', {
-            tag: el.tagName,
-            hasBgImage: !!bgImage && bgImage !== 'none',
-            bgImageUrl: bgImageUrl ? bgImageUrl.substring(0, 100) + '...' : null,
-            dataName,
-            className: className.substring(0, 50),
-            parentAria,
-            parentHref,
-            rect: el.getBoundingClientRect(),
-          });
-        }
-      }
-      
-      if (!bgImageUrl) return false;
-      
-      // Check for strong logo indicators
+
       const hasLogoDataAttr = el.getAttribute('data-framer-name')?.toLowerCase().includes('logo') ||
                               el.getAttribute('data-name')?.toLowerCase().includes('logo');
       const hasLogoClass = className.toLowerCase().includes('logo');
       const hasLogoAriaLabel = parentLink && /logo|home|brand/i.test(parentLink.getAttribute('aria-label') || '');
       const hasHomeHref = parentLink && isHomeHref(parentLink.getAttribute('href') || '');
       const inHeaderNav = el.closest('header, nav, [role="banner"]') !== null;
-      
-      const shouldInclude = hasLogoDataAttr || hasLogoClass || (hasLogoAriaLabel && hasHomeHref) || (hasLogoAriaLabel && inHeaderNav) || (hasHomeHref && inHeaderNav);
-      
-      // Debug logging
-      if (debugLogo && shouldInclude) {
-        console.log('🔥 [LOGO DEBUG] Element matches logo criteria:', {
-          tag: el.tagName,
-          hasLogoDataAttr,
-          hasLogoClass,
-          hasLogoAriaLabel,
-          hasHomeHref,
-          inHeaderNav,
-          shouldInclude,
-          bgImageUrl: bgImageUrl.substring(0, 100) + '...',
-        });
-      }
-      
-      // Be more aggressive: if we have logo data attr OR logo class OR (logo aria-label AND home href), collect it
-      // Don't require header/nav context if we have strong indicators
-      return shouldInclude;
+
+      return hasLogoDataAttr || hasLogoClass || (hasLogoAriaLabel && hasHomeHref) || (hasLogoAriaLabel && inHeaderNav) || (hasHomeHref && inHeaderNav);
     });
-    
-    if (debugStats) {
-      debugStats.selectorCounts["elements-with-bg-image-and-logo-indicators"] = allDivsWithBgImage.length;
-    }
-    
-    if (debugLogo) {
-      console.log('🔥 [LOGO DEBUG] Found', allDivsWithBgImage.length, 'elements with bg-image and logo indicators');
-    }
-    
+
     allDivsWithBgImage.forEach(el => {
-      // Check if already collected
       const rect = el.getBoundingClientRect();
       const alreadyCollected = logoCandidates.some(c => {
-        return Math.abs(c.position.top - rect.top) < 1 && 
+        return Math.abs(c.position.top - rect.top) < 1 &&
                Math.abs(c.position.left - rect.left) < 1 &&
                Math.abs(c.position.width - rect.width) < 1 &&
                Math.abs(c.position.height - rect.height) < 1;
       });
       if (!alreadyCollected) {
-        if (debugLogo) {
-          console.log('🔥 [LOGO DEBUG] Collecting element candidate:', {
-            tag: el.tagName,
-            src: extractBackgroundImageUrl(getComputedStyleCached(el).getPropertyValue('background-image'))?.substring(0, 100) + '...',
-            rect,
-          });
-        }
         collectLogoCandidate(el, 'background-image-logo-indicators');
-      } else if (debugLogo) {
-        console.log('🔥 [LOGO DEBUG] Skipping element - already collected');
       }
     });
 
     const excludeSelectors = '[class*="testimonial"], [class*="client"], [class*="partner"], [class*="customer"], [class*="case-study"], [id*="testimonial"], [id*="client"], [id*="partner"], [id*="customer"], [id*="case-study"], footer, [class*="footer"]';
     
     const allImages = querySelectorAllIncludingShadowRoots("img");
-    if (debugStats) {
-      debugStats.selectorCounts["document.images"] = allImages.length;
-    }
     allImages.forEach(img => {
       if (
         /logo/i.test(img.alt || "") ||
@@ -1991,31 +1629,28 @@ export const getBrandingScript = () => String.raw`
     });
 
     const allSvgs = querySelectorAllIncludingShadowRoots("svg");
-    if (debugStats) {
-      debugStats.selectorCounts["document.querySelectorAll(svg)"] = allSvgs.length;
-    }
     allSvgs.forEach(svg => {
       const svgRect = svg.getBoundingClientRect();
       const alreadyCollected = logoCandidates.some(c => {
         if (!c.isSvg) return false;
-        return Math.abs(c.position.top - svgRect.top) < 1 && 
+        return Math.abs(c.position.top - svgRect.top) < 1 &&
                Math.abs(c.position.left - svgRect.left) < 1 &&
                Math.abs(c.position.width - svgRect.width) < 1 &&
                Math.abs(c.position.height - svgRect.height) < 1;
       });
       if (alreadyCollected) {
-        recordSkip("svg-already-collected", svg, svgRect);
         return;
       }
-      
+
       const insideButton = svg.closest('button, [role="button"], input[type="button"], input[type="submit"]');
       if (insideButton) {
-        // Allow SVG in button when it's the primary logo in a taskbar/menubar at top (e.g. PostHog)
         const inTaskbarOrMenubar = svg.closest('#taskbar, [id*="taskbar" i], [role="menubar"]');
-        const isTopBarLogo = inTaskbarOrMenubar && svgRect.top <= 120 && svgRect.left <= 450 &&
-          svgRect.width >= 24 && svgRect.height >= 12; // Wordmark-sized
+        const isTopBarLogo = inTaskbarOrMenubar &&
+          svgRect.top <= CONSTANTS.TASKBAR_LOGO_MAX_TOP &&
+          svgRect.left <= CONSTANTS.TASKBAR_LOGO_MAX_LEFT &&
+          svgRect.width >= CONSTANTS.TASKBAR_LOGO_MIN_WIDTH &&
+          svgRect.height >= CONSTANTS.TASKBAR_LOGO_MIN_HEIGHT;
         if (!isTopBarLogo) {
-          recordSkip("svg-inside-button", svg, svgRect);
           return;
         }
       }
@@ -2044,7 +1679,6 @@ export const getBrandingScript = () => String.raw`
       const isSearchIcon = hasSearchId || hasSearchClass || hasSearchAriaLabel || hasSearchTitle || isInSearchForm || !!inSearchButton;
       
       if (isSearchIcon) {
-        recordSkip("svg-search-icon", svg, svgRect);
         return;
       }
       
@@ -2069,7 +1703,6 @@ export const getBrandingScript = () => String.raw`
       if (isUIIcon) {
         const hasExplicitLogoIndicator = hasLogoId || hasLogoClass || hasLogoAriaLabel || hasLogoTitle || inLogoContainer;
         if (!hasExplicitLogoIndicator) {
-          recordSkip("svg-ui-icon", svg, svgRect);
           return;
         }
       }
@@ -2088,20 +1721,17 @@ export const getBrandingScript = () => String.raw`
         if (!svg.closest(excludeSelectors)) {
           collectLogoCandidate(svg, "document.querySelectorAll(svg)");
         }
-      } else {
-        recordSkip("svg-no-logo-indicator", svg, svgRect);
       }
     });
 
     // Fallback: top-of-page img/svg inside a link to home (catches first image in body, custom nav, etc.)
-    const TOP_PAGE_THRESHOLD_PX = 500;
     const homeLinks = querySelectorAllIncludingShadowRoots('a[href]').filter(a => isHomeHref(a.getAttribute('href') || ''));
     const fallbackCandidates = [];
     homeLinks.forEach(link => {
       const imgs = link.querySelectorAll('img, svg');
       imgs.forEach(el => {
         const rect = el.getBoundingClientRect();
-        const inTop = rect.top >= 0 && rect.top < TOP_PAGE_THRESHOLD_PX;
+        const inTop = rect.top >= 0 && rect.top < CONSTANTS.TOP_PAGE_THRESHOLD_PX;
         const hasSize = rect.width > 0 && rect.height > 0;
         if (inTop && hasSize) fallbackCandidates.push({ el, top: rect.top, left: rect.left });
       });
@@ -2151,38 +1781,11 @@ export const getBrandingScript = () => String.raw`
     });
     const uniqueCandidates = Array.from(bySrc.values());
 
-    if (debugLogo) {
-      console.log('🔥 [LOGO DEBUG] Summary:', {
-        totalCandidates: logoCandidates.length,
-        uniqueCandidates: uniqueCandidates.length,
-        candidates: uniqueCandidates.map(c => ({
-          src: c.src.substring(0, 100) + '...',
-          source: c.source,
-          isVisible: c.isVisible,
-          indicators: c.indicators,
-        })),
-      });
-    }
-
     let candidatesToPick = uniqueCandidates.filter(c => c.isVisible);
     if (candidatesToPick.length === 0 && uniqueCandidates.length > 0) {
       candidatesToPick = uniqueCandidates;
     }
-    
-    if (debugLogo) {
-      console.log('🔥 [LOGO DEBUG] Selection phase:', {
-        uniqueCandidates: uniqueCandidates.length,
-        visibleCandidates: candidatesToPick.length,
-        candidates: candidatesToPick.map(c => ({
-          src: c.src.substring(0, 80) + '...',
-          location: c.location,
-          isVisible: c.isVisible,
-          indicators: c.indicators,
-          position: c.position,
-        })),
-      });
-    }
-    
+
     if (candidatesToPick.length > 0) {
       const best = candidatesToPick.reduce((best, candidate) => {
         if (!best) return candidate;
@@ -2233,71 +1836,12 @@ export const getBrandingScript = () => String.raw`
       }, null);
 
       if (best) {
-        if (debugLogo) {
-          console.log('🔥 [LOGO DEBUG] Selected best logo:', {
-            src: best.src.substring(0, 100) + '...',
-            isSvg: best.isSvg,
-            location: best.location,
-            indicators: best.indicators,
-            source: best.source,
-          });
-        }
         if (best.isSvg) {
           push(best.src, "logo-svg");
         } else {
           push(best.src, "logo");
         }
-      } else if (debugLogo) {
-        console.log('🔥 [LOGO DEBUG] No best logo selected from', candidatesToPick.length, 'candidates');
       }
-    } else if (debugLogo) {
-      console.log('🔥 [LOGO DEBUG] No candidates to pick from', uniqueCandidates.length, 'unique candidates');
-    }
-
-    if (debugLogo && debugStats) {
-      const keySelectors = [
-        "header a img",
-        "a[data-tracking-type*=\"logo\" i] img",
-        "[class*=\"header-logo\" i] img",
-        "[class*=\"container-logo\" i] a img",
-      ];
-      const firstMatchesBySelector = {};
-      keySelectors.forEach((sel) => {
-        const matches = querySelectorAllIncludingShadowRoots(sel);
-        firstMatchesBySelector[sel] = matches.slice(0, 3).map((el) => {
-          const rect = el.getBoundingClientRect?.();
-          const a = el.closest?.("a");
-          return {
-            tag: el.tagName,
-            class: (el.getAttribute?.("class") || "").slice(0, 80),
-            src: (el.src || el.getAttribute?.("src") || "").slice(0, 80),
-            alt: (el.alt || el.getAttribute?.("alt") || "").slice(0, 60),
-            parentHref: a ? (a.getAttribute?.("href") || "").slice(0, 60) : "",
-            rect: rect ? { w: Math.round(rect.width), h: Math.round(rect.height), top: Math.round(rect.top), left: Math.round(rect.left) } : null,
-          };
-        });
-      });
-      const copyPayload = {
-        selectorCounts: debugStats.selectorCounts,
-        skipped: debugStats.skipped,
-        skipSamples: debugStats.skipSamples,
-        added: debugStats.added,
-        candidateSamples: debugStats.candidateSamples,
-        firstMatchesBySelector,
-        uniqueCandidatesCount: uniqueCandidates.length,
-        uniqueCandidatesPreview: uniqueCandidates.slice(0, 15).map((c) => ({
-          src: c.src ? c.src.slice(0, 100) + (c.src.length > 100 ? "..." : "") : "",
-          alt: c.alt || "",
-          href: c.href ? (c.href.length > 60 ? c.href.slice(0, 60) + "..." : c.href) : "",
-          location: c.location,
-          isVisible: c.isVisible,
-          position: c.position,
-          source: c.source,
-        })),
-        imagesCount: imgs.length,
-      };
-      console.log("🔥 [LOGO DEBUG] Copy this JSON (paste to debug):");
-      console.log(JSON.stringify(copyPayload, null, 2));
     }
 
     return { images: imgs, logoCandidates: uniqueCandidates };
