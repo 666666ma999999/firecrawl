@@ -1028,7 +1028,9 @@ export const findImages = (): FindImagesResult => {
     });
   });
 
-  const allElementsWithBg = Array.from(document.querySelectorAll("div, span"));
+  const allElementsWithBg = Array.from(
+    document.querySelectorAll("a, div, span, hgroup, figure"),
+  );
 
   const allDivsWithBgImage = allElementsWithBg.filter(el => {
     const style = getComputedStyleCached(el);
@@ -1054,12 +1056,27 @@ export const findImages = (): FindImagesResult => {
     const inHeaderNavCheck =
       el.closest('header, nav, [role="banner"]') !== null;
 
+    // Check for child anchor linking to home (for elements like hgroup that contain site title links)
+    const childHomeLink = el.querySelector('a[href="/"], a[href="./"]');
+    const hasChildHomeLink = childHomeLink !== null;
+
+    // Check for common site branding ID patterns
+    const elId = (el.id || "").toLowerCase();
+    const hasSiteBrandingId = /site[-_]?(title|logo|brand|name)/i.test(elId);
+    const containsSiteBrandingId =
+      el.querySelector(
+        '[id*="site-title" i], [id*="site-logo" i], [id*="site_title" i], [id*="site_logo" i]',
+      ) !== null;
+
     return (
       hasLogoDataAttr ||
       hasLogoClass ||
+      hasSiteBrandingId ||
       (hasLogoAriaLabel && hasHomeHrefCheck) ||
       (hasLogoAriaLabel && inHeaderNavCheck) ||
-      (hasHomeHrefCheck && inHeaderNavCheck)
+      (hasHomeHrefCheck && inHeaderNavCheck) ||
+      (hasChildHomeLink && inHeaderNavCheck) ||
+      (containsSiteBrandingId && inHeaderNavCheck)
     );
   });
 
