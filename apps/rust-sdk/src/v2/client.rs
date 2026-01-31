@@ -85,7 +85,8 @@ impl Client {
         api_url: impl AsRef<str>,
         api_key: Option<impl AsRef<str>>,
     ) -> Result<Self, FirecrawlError> {
-        let url = api_url.as_ref().to_string();
+        // Normalize URL by trimming trailing slashes for consistent comparison
+        let url = api_url.as_ref().trim_end_matches('/').to_string();
         let api_key = api_key.map(|k| k.as_ref().to_string());
 
         // Reject empty or missing API key for cloud service
@@ -131,10 +132,7 @@ impl Client {
 
         let mut headers = reqwest::header::HeaderMap::new();
         // Static string is always valid ASCII
-        headers.insert(
-            "Content-Type",
-            HeaderValue::from_static("application/json"),
-        );
+        headers.insert("Content-Type", HeaderValue::from_static("application/json"));
         if let Some(api_key) = self.api_key.as_ref() {
             // API key is validated at client creation, so this should always succeed.
             // Use if-let to gracefully handle edge cases without panicking.
@@ -256,5 +254,20 @@ mod tests {
     fn test_url_builder() {
         let client = Client::new("test-key").unwrap();
         assert_eq!(client.url("/scrape"), "https://api.firecrawl.dev/v2/scrape");
+    }
+
+    #[test]
+    fn test_url_normalization_trailing_slash() {
+        // Cloud URL with trailing slash should still require API key
+        let result = Client::new_selfhosted("https://api.firecrawl.dev/", None::<&str>);
+        assert!(result.is_err());
+
+        // Should work with API key
+        let client = Client::new_selfhosted("https://api.firecrawl.dev/", Some("key")).unwrap();
+        assert_eq!(client.api_url, "https://api.firecrawl.dev");
+
+        // Self-hosted URL normalization
+        let client = Client::new_selfhosted("http://localhost:3000/", None::<&str>).unwrap();
+        assert_eq!(client.api_url, "http://localhost:3000");
     }
 }

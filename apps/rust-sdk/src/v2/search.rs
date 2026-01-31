@@ -66,15 +66,43 @@ pub struct SearchData {
 
 /// A search result that may be a simple result or a full document.
 ///
-/// Note: `WebResult` must come first because `Document` has all optional fields
-/// and would match any JSON object, preventing `WebResult` from ever matching.
-#[derive(Deserialize, Serialize, Debug, Clone)]
+/// Uses custom deserialization to properly distinguish between web results
+/// and scraped documents by checking for document-specific fields.
+#[derive(Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum SearchResultOrDocument {
     /// Simple web search result.
     WebResult(SearchResultWeb),
     /// Full scraped document.
     Document(Document),
+}
+
+impl<'de> serde::Deserialize<'de> for SearchResultOrDocument {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        use serde_json::Value;
+
+        let value = Value::deserialize(deserializer)?;
+
+        // Check for document-specific fields that indicate scraped content
+        // If any of these exist, it's a Document, not a simple WebResult
+        let is_document = value.get("markdown").is_some()
+            || value.get("html").is_some()
+            || value.get("rawHtml").is_some()
+            || value.get("metadata").is_some();
+
+        if is_document {
+            Document::deserialize(value)
+                .map(SearchResultOrDocument::Document)
+                .map_err(serde::de::Error::custom)
+        } else {
+            SearchResultWeb::deserialize(value)
+                .map(SearchResultOrDocument::WebResult)
+                .map_err(serde::de::Error::custom)
+        }
+    }
 }
 
 /// Response from search endpoint.
@@ -368,6 +396,71 @@ mod tests {
         let result = client.search("", None).await;
 
         assert!(result.is_err());
+        mock.assert();
+    }
+
+    #[tokio::test]
+    async fn test_search_mixed_results_deserialization() {
+        // Test that results with markdown/metadata are correctly identified as Documents
+        // and simple results are identified as WebResults
+        let mut server = mockito::Server::new_async().await;
+
+        let mock = server
+            .mock("POST", "/v2/search")
+            .with_status(200)
+            .with_header("content-type", "application/json")
+            .with_body(
+                json!({
+                    "success": true,
+                    "data": {
+                        "web": [
+                            // Simple web result (no markdown/metadata)
+                            {
+                                "url": "https://example.com/simple",
+                                "title": "Simple Result",
+                                "description": "Just a search result"
+                            },
+                            // Scraped document with url AND markdown
+                            {
+                                "url": "https://example.com/scraped",
+                                "markdown": "# Scraped Content\n\nThis has content.",
+                                "metadata": {
+                                    "sourceURL": "https://example.com/scraped",
+                                    "statusCode": 200,
+                                    "title": "Scraped Page"
+                                }
+                            }
+                        ]
+                    }
+                })
+                .to_string(),
+            )
+            .create();
+
+        let client = Client::new_selfhosted(server.url(), Some("test_key")).unwrap();
+        let response = client.search("test", None).await.unwrap();
+
+        let web_results = response.data.web.unwrap();
+        assert_eq!(web_results.len(), 2);
+
+        // First should be WebResult
+        match &web_results[0] {
+            SearchResultOrDocument::WebResult(r) => {
+                assert_eq!(r.url, "https://example.com/simple");
+                assert_eq!(r.title, Some("Simple Result".to_string()));
+            }
+            SearchResultOrDocument::Document(_) => panic!("Expected WebResult, got Document"),
+        }
+
+        // Second should be Document (has markdown)
+        match &web_results[1] {
+            SearchResultOrDocument::Document(d) => {
+                assert!(d.markdown.is_some());
+                assert!(d.markdown.as_ref().unwrap().contains("Scraped Content"));
+            }
+            SearchResultOrDocument::WebResult(_) => panic!("Expected Document, got WebResult"),
+        }
+
         mock.assert();
     }
 }
