@@ -65,13 +65,16 @@ pub struct SearchData {
 }
 
 /// A search result that may be a simple result or a full document.
+///
+/// Note: `WebResult` must come first because `Document` has all optional fields
+/// and would match any JSON object, preventing `WebResult` from ever matching.
 #[derive(Deserialize, Serialize, Debug, Clone)]
 #[serde(untagged)]
 pub enum SearchResultOrDocument {
-    /// Full scraped document.
-    Document(Document),
     /// Simple web search result.
     WebResult(SearchResultWeb),
+    /// Full scraped document.
+    Document(Document),
 }
 
 /// Response from search endpoint.

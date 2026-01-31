@@ -86,20 +86,37 @@ impl Client {
         api_key: Option<impl AsRef<str>>,
     ) -> Result<Self, FirecrawlError> {
         let url = api_url.as_ref().to_string();
+        let api_key = api_key.map(|k| k.as_ref().to_string());
 
-        if url == CLOUD_API_URL && api_key.is_none() {
-            return Err(FirecrawlError::APIError(
-                "Configuration".to_string(),
-                FirecrawlAPIError {
-                    success: false,
-                    error: "API key is required for cloud service".to_string(),
-                    details: None,
-                },
-            ));
+        // Reject empty or missing API key for cloud service
+        if url == CLOUD_API_URL {
+            match &api_key {
+                None => {
+                    return Err(FirecrawlError::APIError(
+                        "Configuration".to_string(),
+                        FirecrawlAPIError {
+                            success: false,
+                            error: "API key is required for cloud service".to_string(),
+                            details: None,
+                        },
+                    ));
+                }
+                Some(key) if key.trim().is_empty() => {
+                    return Err(FirecrawlError::APIError(
+                        "Configuration".to_string(),
+                        FirecrawlAPIError {
+                            success: false,
+                            error: "API key cannot be empty for cloud service".to_string(),
+                            details: None,
+                        },
+                    ));
+                }
+                _ => {}
+            }
         }
 
         Ok(Client {
-            api_key: api_key.map(|x| x.as_ref().to_string()),
+            api_key,
             api_url: url,
             client: reqwest::Client::new(),
         })
@@ -110,16 +127,26 @@ impl Client {
         &self,
         idempotency_key: Option<&String>,
     ) -> reqwest::header::HeaderMap {
+        use reqwest::header::HeaderValue;
+
         let mut headers = reqwest::header::HeaderMap::new();
-        headers.insert("Content-Type", "application/json".parse().unwrap());
+        // Static string is always valid ASCII
+        headers.insert(
+            "Content-Type",
+            HeaderValue::from_static("application/json"),
+        );
         if let Some(api_key) = self.api_key.as_ref() {
-            headers.insert(
-                "Authorization",
-                format!("Bearer {}", api_key).parse().unwrap(),
-            );
+            // API key is validated at client creation, so this should always succeed.
+            // Use if-let to gracefully handle edge cases without panicking.
+            if let Ok(value) = format!("Bearer {}", api_key).parse() {
+                headers.insert("Authorization", value);
+            }
         }
         if let Some(key) = idempotency_key {
-            headers.insert("x-idempotency-key", key.parse().unwrap());
+            // Gracefully skip invalid idempotency keys instead of panicking
+            if let Ok(value) = key.parse() {
+                headers.insert("x-idempotency-key", value);
+            }
         }
         headers
     }
@@ -199,6 +226,15 @@ mod tests {
     #[test]
     fn test_new_client_requires_api_key_for_cloud() {
         let result = Client::new_selfhosted(CLOUD_API_URL, None::<&str>);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_new_client_rejects_empty_api_key_for_cloud() {
+        let result = Client::new_selfhosted(CLOUD_API_URL, Some(""));
+        assert!(result.is_err());
+
+        let result = Client::new_selfhosted(CLOUD_API_URL, Some("   "));
         assert!(result.is_err());
     }
 
