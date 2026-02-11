@@ -555,6 +555,12 @@ results.data.web.forEach(result => {
 
 ---
 
+## Recent Updates
+
+- Improved extraction of JS-clickable links by normalizing simple `window.open(...)` handlers before markdown conversion.
+
+---
+
 ## Resources
 
 - [Documentation](https://docs.firecrawl.dev)
