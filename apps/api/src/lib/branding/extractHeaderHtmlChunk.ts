@@ -28,7 +28,6 @@ function stripNoise(html: string): string {
   // Strip data-* attributes
   out = out.replace(/\s+data-[\w-]+="[^"]*"/gi, "");
   out = out.replace(/\s+data-[\w-]+='[^']*'/gi, "");
-  // Sanitize aria-label (keep attribute but truncate long values likely to be injection)
   out = out.replace(/\s+aria-label="[^"]{50,}"/gi, ' aria-label="[truncated]"');
   // Strip title attributes longer than 50 chars (likely injection)
   out = out.replace(/\s+title="[^"]{50,}"/gi, "");

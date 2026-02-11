@@ -324,7 +324,7 @@ export function processRawBranding(raw: BrandingScriptReturn): BrandingProfile {
       if (!s.isButton) return false;
       if (s.rect.w < 30 || s.rect.h < 30) return false;
       if (!s.text || s.text.trim().length === 0) return false;
-      // Filter off-screen elements (likely hidden injection vectors)
+      // Filter off-screen elements
       if (s.rect.top < -500 || s.rect.left < -500) return false;
       // Filter hidden elements
       if (s.isVisible === false) return false;
