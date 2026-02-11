@@ -77,22 +77,22 @@ interface BrowserSession {
 const sessions = new Map<string, BrowserSession>();
 
 /** Periodic cleanup of expired sessions */
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, session] of sessions) {
-    if (session.destroyed) {
-      sessions.delete(id);
-      continue;
-    }
-    const totalExpired = now - session.createdAt > session.ttlTotal * 1000;
-    const activityExpired =
-      session.ttlWithoutActivity !== undefined &&
-      now - session.lastActivity > session.ttlWithoutActivity * 1000;
-    if (totalExpired || activityExpired) {
-      destroySession(session).catch(() => {});
-    }
-  }
-}, 15_000);
+// setInterval(() => {
+//   const now = Date.now();
+//   for (const [id, session] of sessions) {
+//     if (session.destroyed) {
+//       sessions.delete(id);
+//       continue;
+//     }
+//     const totalExpired = now - session.createdAt > session.ttlTotal * 1000;
+//     const activityExpired =
+//       session.ttlWithoutActivity !== undefined &&
+//       now - session.lastActivity > session.ttlWithoutActivity * 1000;
+//     if (totalExpired || activityExpired) {
+//       destroySession(session).catch(() => {});
+//     }
+//   }
+// }, 15_000);
 
 // ---------------------------------------------------------------------------
 // Helpers
