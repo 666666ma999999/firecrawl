@@ -10,6 +10,7 @@ function sanitizeForPrompt(
   return str
     .replace(/[\r\n]+/g, " ") // flatten newlines
     .replace(/[\x00-\x1f\x7f]/g, "") // strip control chars
+    .replace(/"/g, '\\"') // escape quotes for use in quoted prompt fields
     .trim()
     .substring(0, maxLen);
 }
