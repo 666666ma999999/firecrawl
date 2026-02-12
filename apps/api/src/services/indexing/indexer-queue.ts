@@ -53,6 +53,7 @@ class IndexerQueue {
       this.connection = await amqp.connect(config.INDEXER_RABBITMQ_URL);
       this.publishChannel = await this.connection.createChannel();
 
+      // NOTE: this queue is already created by another service
       await this.publishChannel.checkQueue(LINKS_QUEUE_NAME);
 
       this._registerConnectionEvents();
