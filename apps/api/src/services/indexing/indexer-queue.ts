@@ -24,10 +24,12 @@ class IndexerQueue {
 
   private connectPromise: Promise<void> | null = null;
 
+  private closing: boolean = false;
   private noop: boolean | null = null;
 
   async connect(): Promise<void> {
     if (this.connectPromise) return this.connectPromise;
+    if (this.closing) return;
     if (this.noop) return;
     if (this.connection && this.publishChannel) return;
 
@@ -71,9 +73,12 @@ class IndexerQueue {
     if (!this.connection || !this.publishChannel) return;
 
     this.connection.on("close", () => {
+      if (this.closing) return;
+
       logger.warn("Index RabbitMQ connection closed", {
         module: "index-queue",
       });
+
       this.cleanup();
       setTimeout(
         () =>
@@ -177,6 +182,7 @@ class IndexerQueue {
 
   async close(): Promise<void> {
     if (this.noop) return;
+    this.closing = true;
 
     try {
       await this.publishChannel?.close();
