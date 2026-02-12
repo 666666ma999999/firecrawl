@@ -23,7 +23,7 @@ function stripNoise(html: string): string {
   // Strip hidden elements (display:none or visibility:hidden in inline style)
   // Capture the tag name so we match its corresponding closing tag, not an inner one (e.g. </span> inside a hidden <div>)
   out = out.replace(
-    /<(\w+)\b[^>]+style\s*=\s*"[^"]*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^"]*"[^>]*>[\s\S]*?<\/\1>/gi,
+    /<([\w:-]+)\b[^>]+style\s*=\s*"[^"]*(?:display\s*:\s*none|visibility\s*:\s*hidden)[^"]*"[^>]*>[\s\S]*?<\/\1>/gi,
     "",
   );
   // Strip data-* attributes
