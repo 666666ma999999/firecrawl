@@ -34,8 +34,10 @@ function stripNoise(html: string): string {
   out = out.replace(/\s+data-[\w-]+="[^"]*"/gi, "");
   out = out.replace(/\s+data-[\w-]+='[^']*'/gi, "");
   out = out.replace(/\s+aria-label="[^"]{50,}"/gi, ' aria-label="[truncated]"');
+  out = out.replace(/\s+aria-label='[^']{50,}'/gi, " aria-label='[truncated]'");
   // Strip title attributes longer than 50 chars
   out = out.replace(/\s+title="[^"]{50,}"/gi, "");
+  out = out.replace(/\s+title='[^']{50,}'/gi, "");
   return out;
 }
 
