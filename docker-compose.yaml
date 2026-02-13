@@ -1,10 +1,8 @@
 name: firecrawl
 
 x-common-service: &common-service
-  # NOTE: If you don't want to build the service locally,
-  # comment out the build: statement and uncomment the image: statement
-  # image: ghcr.io/firecrawl/firecrawl
-  build: apps/api
+  image: ghcr.io/firecrawl/firecrawl
+  # build: apps/api
 
   ulimits:
     nofile:
@@ -57,10 +55,8 @@ x-common-env: &common-env
 
 services:
   playwright-service:
-    # NOTE: If you don't want to build the service locally,
-    # comment out the build: statement and uncomment the image: statement
-    # image: ghcr.io/firecrawl/playwright-service:latest
-    build: apps/playwright-service-ts
+    image: ghcr.io/firecrawl/playwright-service:latest
+    # build: apps/playwright-service-ts
     environment:
       PORT: 3000
       PROXY_SERVER: ${PROXY_SERVER}
@@ -72,9 +68,9 @@ services:
     networks:
       - backend
     # Resource limits for Docker Compose (not Swarm)
-    cpus: 2.0
-    mem_limit: 4G
-    memswap_limit: 4G
+    cpus: 1.0
+    mem_limit: 2G
+    memswap_limit: 2G
     logging:
       driver: "json-file"
       options:
@@ -106,9 +102,9 @@ services:
     command: node dist/src/harness.js --start-docker
     # Resource limits for Docker Compose (not Swarm)
     # Increase if you have more CPU cores/RAM available
-    cpus: 4.0
-    mem_limit: 8G
-    memswap_limit: 8G
+    cpus: 2.0
+    mem_limit: 4G
+    memswap_limit: 4G
 
   redis:
     # NOTE: If you want to use Valkey (open source) instead of Redis (source available),
